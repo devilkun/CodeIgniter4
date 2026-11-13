@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,30 +13,30 @@
 
 namespace CodeIgniter;
 
+use CodeIgniter\HTTP\CLIRequest;
 use CodeIgniter\HTTP\Exceptions\HTTPException;
+use CodeIgniter\HTTP\Exceptions\RedirectException;
+use CodeIgniter\HTTP\IncomingRequest;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
 use CodeIgniter\Validation\Exceptions\ValidationException;
-use CodeIgniter\Validation\Validation;
-use Config\Services;
+use CodeIgniter\Validation\ValidationInterface;
+use Config\Validation;
 use Psr\Log\LoggerInterface;
 
-/**
- * Class Controller
- */
 class Controller
 {
     /**
      * Helpers that will be automatically loaded on class instantiation.
      *
-     * @var array
+     * @var list<string>
      */
     protected $helpers = [];
 
     /**
      * Instance of the main Request object.
      *
-     * @var RequestInterface
+     * @var CLIRequest|IncomingRequest
      */
     protected $request;
 
@@ -62,14 +64,18 @@ class Controller
     /**
      * Once validation has been run, will hold the Validation instance.
      *
-     * @var Validation
+     * @var ValidationInterface|null
      */
     protected $validator;
 
     /**
      * Constructor.
      *
-     * @throws HTTPException
+     * @param CLIRequest|IncomingRequest $request
+     *
+     * @return void
+     *
+     * @throws HTTPException|RedirectException
      */
     public function initController(RequestInterface $request, ResponseInterface $response, LoggerInterface $logger)
     {
@@ -95,52 +101,66 @@ class Controller
      *                      considered secure for. Only with HSTS header.
      *                      Default value is 1 year.
      *
-     * @throws HTTPException
+     * @return void
+     *
+     * @throws HTTPException|RedirectException
      */
-    protected function forceHTTPS(int $duration = 31536000)
+    protected function forceHTTPS(int $duration = 31_536_000)
     {
         force_https($duration, $this->request, $this->response);
     }
 
     /**
-     * Provides a simple way to tie into the main CodeIgniter class and
-     * tell it how long to cache the current page for.
+     * How long to cache the current page for.
+     *
+     * @params int $time time to live in seconds.
+     *
+     * @return void
      */
     protected function cachePage(int $time)
     {
-        CodeIgniter::cache($time);
+        service('responsecache')->setTtl($time);
     }
 
     /**
-     * Handles "auto-loading" helper files.
+     * A shortcut to performing validation on Request data.
      *
-     * @deprecated Use `helper` function instead of using this method.
-     *
-     * @codeCoverageIgnore
-     */
-    protected function loadHelpers()
-    {
-        if (empty($this->helpers)) {
-            return;
-        }
-
-        helper($this->helpers);
-    }
-
-    /**
-     * A shortcut to performing validation on input data. If validation
-     * is not successful, a $errors property will be set on this class.
-     *
-     * @param array|string $rules
-     * @param array        $messages An array of custom error messages
+     * @param array<array-key, mixed>|string              $rules
+     * @param array<string, array<string, string>|string> $messages An array of custom error messages
      */
     protected function validate($rules, array $messages = []): bool
     {
-        $this->validator = Services::validation();
+        $this->setValidator($rules, $messages);
+
+        return $this->validator->withRequest($this->request)->run();
+    }
+
+    /**
+     * A shortcut to performing validation on any input data.
+     *
+     * @param array<array-key, mixed>                     $data     The data to validate
+     * @param array<array-key, mixed>|string              $rules
+     * @param array<string, array<string, string>|string> $messages An array of custom error messages
+     * @param string|null                                 $dbGroup  The database group to use
+     */
+    protected function validateData(array $data, $rules, array $messages = [], ?string $dbGroup = null): bool
+    {
+        $this->setValidator($rules, $messages);
+
+        return $this->validator->run($data, null, $dbGroup);
+    }
+
+    /**
+     * @param array<array-key, mixed>|string              $rules
+     * @param array<string, array<string, string>|string> $messages
+     */
+    private function setValidator($rules, array $messages): void
+    {
+        $this->validator = service('validation');
 
         // If you replace the $rules array with the name of the group
         if (is_string($rules)) {
-            $validation = config('Validation');
+            $validation = config(Validation::class);
 
             // If the rule wasn't found in the \Config\Validation, we
             // should throw an exception so the developer can find it.
@@ -149,7 +169,7 @@ class Controller
             }
 
             // If no error message is defined, use the error message in the Config\Validation file
-            if (! $messages) {
+            if ($messages === []) {
                 $errorName = $rules . '_errors';
                 $messages  = $validation->{$errorName} ?? [];
             }
@@ -157,6 +177,6 @@ class Controller
             $rules = $validation->{$rules};
         }
 
-        return $this->validator->withRequest($this->request)->setRules($rules, $messages)->run();
+        $this->validator->setRules($rules, $messages);
     }
 }

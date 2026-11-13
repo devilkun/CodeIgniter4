@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -69,7 +71,7 @@ class Seed extends BaseCommand
         $seeder   = new Seeder(new Database());
         $seedName = array_shift($params);
 
-        if (empty($seedName)) {
+        if ($seedName === null || $seedName === '') {
             $seedName = CLI::prompt(lang('Migrations.migSeeder'), null, 'required'); // @codeCoverageIgnore
         }
 

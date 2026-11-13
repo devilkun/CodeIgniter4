@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -10,8 +12,6 @@
  */
 
 namespace CodeIgniter\Debug\Toolbar\Collectors;
-
-use Config\Services;
 
 /**
  * Timers collector
@@ -45,12 +45,14 @@ class Timers extends BaseCollector
     /**
      * Child classes should implement this to return the timeline data
      * formatted for correct usage.
+     *
+     * @return list<array{name: string, component: string, start: float, duration: float}>
      */
     protected function formatTimelineData(): array
     {
         $data = [];
 
-        $benchmark = Services::timer(true);
+        $benchmark = service('timer', true);
         $rows      = $benchmark->getTimers(6);
 
         foreach ($rows as $name => $info) {

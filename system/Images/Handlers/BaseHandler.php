@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,14 +13,18 @@
 
 namespace CodeIgniter\Images\Handlers;
 
+use CodeIgniter\Exceptions\InvalidArgumentException;
 use CodeIgniter\Images\Exceptions\ImageException;
 use CodeIgniter\Images\Image;
 use CodeIgniter\Images\ImageHandlerInterface;
 use Config\Images;
-use InvalidArgumentException;
 
 /**
- * Base image handling implementation
+ * Base image handling implementation.
+ *
+ * @template T of object
+ *
+ * @method string getPathname()
  */
 abstract class BaseHandler implements ImageHandlerInterface
 {
@@ -32,7 +38,7 @@ abstract class BaseHandler implements ImageHandlerInterface
     /**
      * The image/file instance
      *
-     * @var Image
+     * @var Image|null
      */
     protected $image;
 
@@ -88,7 +94,7 @@ abstract class BaseHandler implements ImageHandlerInterface
     /**
      * Default options for text watermarking.
      *
-     * @var array
+     * @var array<string, mixed>
      */
     protected $textDefaults = [
         'fontPath'     => null,
@@ -108,7 +114,7 @@ abstract class BaseHandler implements ImageHandlerInterface
     /**
      * Image types with support for transparency.
      *
-     * @var array
+     * @var list<int>
      */
     protected $supportTransparency = [
         IMAGETYPE_PNG,
@@ -118,7 +124,7 @@ abstract class BaseHandler implements ImageHandlerInterface
     /**
      * Temporary image used by the different engines.
      *
-     * @var resource|null
+     * @var T|null
      */
     protected $resource;
 
@@ -135,6 +141,8 @@ abstract class BaseHandler implements ImageHandlerInterface
     /**
      * Sets another image for this handler to work on.
      * Keeps us from needing to continually instantiate the handler.
+     *
+     * @phpstan-assert Image $this->image
      *
      * @return $this
      */
@@ -156,6 +164,8 @@ abstract class BaseHandler implements ImageHandlerInterface
 
     /**
      * Make the image resource object if needed
+     *
+     * @return void
      */
     abstract protected function ensureResource();
 
@@ -172,9 +182,9 @@ abstract class BaseHandler implements ImageHandlerInterface
     /**
      * Verifies that a file has been supplied and it is an image.
      *
-     * @throws ImageException
+     * @phpstan-assert Image $this->image
      *
-     * @return Image The image instance
+     * @throws ImageException
      */
     protected function image(): Image
     {
@@ -183,11 +193,10 @@ abstract class BaseHandler implements ImageHandlerInterface
         }
 
         // Verify withFile has been called
-        if (empty($this->image)) {
+        if ($this->image === null) {
             throw ImageException::forMissingImage();
         }
 
-        // Verify the loaded image is an Image instance
         if (! $this->image instanceof Image) {
             throw ImageException::forInvalidPath();
         }
@@ -197,7 +206,6 @@ abstract class BaseHandler implements ImageHandlerInterface
             throw ImageException::forFileNotSupported();
         }
 
-        // Note that the image has been verified
         $this->verified = true;
 
         return $this->image;
@@ -208,7 +216,7 @@ abstract class BaseHandler implements ImageHandlerInterface
      * Good for extending the system or doing things this library
      * is not intended to do.
      *
-     * @return resource
+     * @return T
      */
     public function getResource()
     {
@@ -236,11 +244,10 @@ abstract class BaseHandler implements ImageHandlerInterface
      *
      * @param bool $maintainRatio If true, will get the closest match possible while keeping aspect ratio true.
      *
-     * @return BaseHandler
+     * @return $this
      */
     public function resize(int $width, int $height, bool $maintainRatio = false, string $masterDim = 'auto')
     {
-        // If the target width/height match the source, then we have nothing to do here.
         if ($this->image()->origWidth === $width && $this->image()->origHeight === $height) {
             return $this;
         }
@@ -296,6 +303,8 @@ abstract class BaseHandler implements ImageHandlerInterface
      */
     public function convert(int $imageType)
     {
+        $this->ensureResource();
+
         $this->image()->imageType = $imageType;
 
         return $this;
@@ -308,28 +317,20 @@ abstract class BaseHandler implements ImageHandlerInterface
      */
     public function rotate(float $angle)
     {
-        // Allowed rotation values
-        $degs = [
-            90.0,
-            180.0,
-            270.0,
-        ];
+        $degs = [90.0, 180.0, 270.0];
 
         if (! in_array($angle, $degs, true)) {
             throw ImageException::forMissingAngle();
         }
 
-        // cast angle as an int, for our use
         $angle = (int) $angle;
 
-        // Reassign the width and height
         if ($angle === 90 || $angle === 270) {
             $temp         = $this->height;
             $this->width  = $this->height;
             $this->height = $temp;
         }
 
-        // Call the Handler-specific version.
         $this->_rotate($angle);
 
         return $this;
@@ -390,23 +391,6 @@ abstract class BaseHandler implements ImageHandlerInterface
      */
     abstract protected function _flip(string $direction);
 
-    /**
-     * Overlays a string of text over the image.
-     *
-     * Valid options:
-     *
-     *  - color         Text Color (hex number)
-     *  - shadowColor   Color of the shadow (hex number)
-     *  - hAlign        Horizontal alignment: left, center, right
-     *  - vAlign        Vertical alignment: top, middle, bottom
-     *  - hOffset
-     *  - vOffset
-     *  - fontPath
-     *  - fontSize
-     *  - shadowOffset
-     *
-     * @return $this
-     */
     public function text(string $text, array $options = [])
     {
         $options                = array_merge($this->textDefaults, $options);
@@ -420,6 +404,23 @@ abstract class BaseHandler implements ImageHandlerInterface
 
     /**
      * Handler-specific method for overlaying text on an image.
+     *
+     * @param array{
+     *     color?: string,
+     *     shadowColor?: string,
+     *     hAlign?: string,
+     *     vAlign?: string,
+     *     hOffset?: int,
+     *     vOffset?: int,
+     *     fontPath?: string,
+     *     fontSize?: int,
+     *     shadowOffset?: int,
+     *     opacity?: float,
+     *     padding?: int,
+     *     withShadow?: bool|string
+     * } $options
+     *
+     * @return void
      */
     abstract protected function _text(string $text, array $options = []);
 
@@ -465,31 +466,16 @@ abstract class BaseHandler implements ImageHandlerInterface
     {
         $orientation = $this->getEXIF('Orientation', $silent);
 
-        switch ($orientation) {
-            case 2:
-                return $this->flip('horizontal');
-
-            case 3:
-                return $this->rotate(180);
-
-            case 4:
-                return $this->rotate(180)->flip('horizontal');
-
-            case 5:
-                return $this->rotate(270)->flip('horizontal');
-
-            case 6:
-                return $this->rotate(270);
-
-            case 7:
-                return $this->rotate(90)->flip('horizontal');
-
-            case 8:
-                return $this->rotate(90);
-
-            default:
-                return $this;
-        }
+        return match ($orientation) {
+            2       => $this->flip('horizontal'),
+            3       => $this->rotate(180),
+            4       => $this->rotate(180)->flip('horizontal'),
+            5       => $this->rotate(270)->flip('horizontal'),
+            6       => $this->rotate(270),
+            7       => $this->rotate(90)->flip('horizontal'),
+            8       => $this->rotate(90),
+            default => $this,
+        };
     }
 
     /**
@@ -501,9 +487,9 @@ abstract class BaseHandler implements ImageHandlerInterface
      * @param string|null $key    If specified, will only return this piece of EXIF data.
      * @param bool        $silent If true, will not throw our own exceptions.
      *
-     * @throws ImageException
-     *
      * @return mixed
+     *
+     * @throws ImageException
      */
     public function getEXIF(?string $key = null, bool $silent = false)
     {
@@ -543,9 +529,7 @@ abstract class BaseHandler implements ImageHandlerInterface
      *  - bottom
      *  - bottom-right
      *
-     * @param int $height
-     *
-     * @return BaseHandler
+     * @return $this
      */
     public function fit(int $width, ?int $height = null, string $position = 'center')
     {
@@ -554,13 +538,11 @@ abstract class BaseHandler implements ImageHandlerInterface
 
         [$cropWidth, $cropHeight] = $this->calcAspectRatio($width, $height, $origWidth, $origHeight);
 
-        if ($height === null) {
-            $height = ceil(($width / $cropWidth) * $cropHeight);
-        }
+        $height ??= (int) ceil(($width / $cropWidth) * $cropHeight);
 
         [$x, $y] = $this->calcCropCoords($cropWidth, $cropHeight, $origWidth, $origHeight, $position);
 
-        return $this->crop($cropWidth, $cropHeight, $x, $y)->resize($width, $height);
+        return $this->crop($cropWidth, $cropHeight, (int) $x, (int) $y)->resize($width, $height);
     }
 
     /**
@@ -570,15 +552,15 @@ abstract class BaseHandler implements ImageHandlerInterface
      * @param float|int|null $height
      * @param float|int      $origWidth
      * @param float|int      $origHeight
+     *
+     * @return array{0: float|int, 1: float|int}
      */
     protected function calcAspectRatio($width, $height = null, $origWidth = 0, $origHeight = 0): array
     {
-        if (empty($origWidth) || empty($origHeight)) {
+        if (in_array($origWidth, [0, 0.0], true) || in_array($origHeight, [0, 0.0], true)) {
             throw new InvalidArgumentException('You must supply the parameters: origWidth, origHeight.');
         }
 
-        // If $height is null, then we have it easy.
-        // Calc based on full image size and be done.
         if ($height === null) {
             $height = ($width / $origWidth) * $origHeight;
 
@@ -613,6 +595,8 @@ abstract class BaseHandler implements ImageHandlerInterface
      * @param float|int $origWidth
      * @param float|int $origHeight
      * @param string    $position
+     *
+     * @return array{0: float|int, 1: float|int}
      */
     protected function calcCropCoords($width, $height, $origWidth, $origHeight, $position): array
     {
@@ -687,6 +671,8 @@ abstract class BaseHandler implements ImageHandlerInterface
      *    $image->resize(100, 200, true)
      *          ->save($target);
      *
+     * @param non-empty-string|null $target
+     *
      * @return bool
      */
     abstract public function save(?string $target = null, int $quality = 90);
@@ -702,6 +688,8 @@ abstract class BaseHandler implements ImageHandlerInterface
      * Provide access to the Image class' methods if they don't exist
      * on the handler itself.
      *
+     * @param list<mixed> $args
+     *
      * @return mixed
      */
     public function __call(string $name, array $args = [])
@@ -709,6 +697,8 @@ abstract class BaseHandler implements ImageHandlerInterface
         if (method_exists($this->image(), $name)) {
             return $this->image()->{$name}(...$args);
         }
+
+        return null;
     }
 
     /**
@@ -720,6 +710,8 @@ abstract class BaseHandler implements ImageHandlerInterface
      *
      * This function lets us re-proportion the width/height
      * if users choose to maintain the aspect ratio when resizing.
+     *
+     * @return void
      */
     protected function reproportion()
     {
@@ -727,7 +719,6 @@ abstract class BaseHandler implements ImageHandlerInterface
             return;
         }
 
-        // Sanitize
         $this->width  = (int) $this->width;
         $this->height = (int) $this->height;
 
@@ -771,5 +762,15 @@ abstract class BaseHandler implements ImageHandlerInterface
     public function getHeight()
     {
         return ($this->resource !== null) ? $this->_getHeight() : $this->height;
+    }
+
+    /**
+     * Placeholder method for implementing metadata clearing logic.
+     *
+     * This method should be implemented to remove or reset metadata as needed.
+     */
+    public function clearMetadata(): static
+    {
+        return $this;
     }
 }

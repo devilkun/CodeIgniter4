@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,36 +14,55 @@
 namespace CodeIgniter\Security;
 
 use CodeIgniter\Config\Factories;
+use CodeIgniter\Config\Services;
 use CodeIgniter\HTTP\IncomingRequest;
-use CodeIgniter\HTTP\Request;
-use CodeIgniter\HTTP\URI;
+use CodeIgniter\HTTP\SiteURI;
 use CodeIgniter\HTTP\UserAgent;
 use CodeIgniter\Security\Exceptions\SecurityException;
+use CodeIgniter\Superglobals;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\Mock\MockAppConfig;
 use CodeIgniter\Test\Mock\MockSecurity;
-use Config\Cookie as CookieConfig;
 use Config\Security as SecurityConfig;
+use PHPUnit\Framework\Attributes\BackupGlobals;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
- * @backupGlobals enabled
- *
  * @internal
  */
+#[BackupGlobals(true)]
+#[Group('Others')]
 final class SecurityTest extends CIUnitTestCase
 {
+    private const CORRECT_CSRF_HASH = '8b9218a55906f9dcc1dc263dce7f005a';
+    private const INVALID_CSRF_HASH = '8b9218a55906f9dcc1dc263dce7f005b';
+
     protected function setUp(): void
     {
         parent::setUp();
 
-        $_COOKIE = [];
+        $this->resetServices();
 
-        Factories::reset();
+        // Ensure that POST and COOKIE superglobals are reset for each test to prevent cross-test pollution.
+        Services::injectMock('superglobals', new Superglobals(post: [], cookie: []));
     }
 
-    public function testBasicConfigIsSaved()
+    private static function createMockSecurity(SecurityConfig $config = new SecurityConfig()): MockSecurity
     {
-        $security = new Security(new MockAppConfig());
+        return new MockSecurity($config);
+    }
+
+    private static function createIncomingRequest(): IncomingRequest
+    {
+        $config = new MockAppConfig();
+
+        return new IncomingRequest($config, new SiteURI($config), null, new UserAgent());
+    }
+
+    public function testBasicConfigIsSaved(): void
+    {
+        $security = $this->createMockSecurity();
 
         $hash = $security->getHash();
 
@@ -49,137 +70,276 @@ final class SecurityTest extends CIUnitTestCase
         $this->assertSame('csrf_test_name', $security->getTokenName());
     }
 
-    public function testHashIsReadFromCookie()
+    public function testHashIsReadFromCookie(): void
     {
-        $_COOKIE['csrf_cookie_name'] = '8b9218a55906f9dcc1dc263dce7f005a';
+        service('superglobals')->setCookie('csrf_cookie_name', self::CORRECT_CSRF_HASH);
 
-        $security = new Security(new MockAppConfig());
+        $security = $this->createMockSecurity();
 
-        $this->assertSame('8b9218a55906f9dcc1dc263dce7f005a', $security->getHash());
+        $this->assertSame(self::CORRECT_CSRF_HASH, $security->getHash());
     }
 
-    public function testCSRFVerifySetsCookieWhenNotPOST()
+    public function testGetHashSetsCookieWhenGetWithoutCsrfCookie(): void
     {
-        $security = new MockSecurity(new MockAppConfig());
+        $security = $this->createMockSecurity();
 
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
-        $security->verify(new Request(new MockAppConfig()));
+        $security->verify($this->createIncomingRequest());
 
-        $this->assertSame($_COOKIE['csrf_cookie_name'], $security->getHash());
+        $cookie = service('response')->getCookie('csrf_cookie_name');
+        $this->assertSame($security->getHash(), $cookie->getValue());
     }
 
-    public function testCSRFVerifyPostThrowsExceptionOnNoMatch()
+    public function testGetHashReturnsCsrfCookieWhenGetWithCsrfCookie(): void
     {
-        $security = new MockSecurity(new MockAppConfig());
-        $request  = new IncomingRequest(new MockAppConfig(), new URI('http://badurl.com'), null, new UserAgent());
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'GET')
+            ->setCookie('csrf_cookie_name', self::CORRECT_CSRF_HASH);
 
-        $_SERVER['REQUEST_METHOD']   = 'POST';
-        $_POST['csrf_test_name']     = '8b9218a55906f9dcc1dc263dce7f005a';
-        $_COOKIE['csrf_cookie_name'] = '8b9218a55906f9dcc1dc263dce7f005b';
+        $security = $this->createMockSecurity();
+
+        $security->verify($this->createIncomingRequest());
+
+        $this->assertSame(self::CORRECT_CSRF_HASH, $security->getHash());
+    }
+
+    public function testCsrfVerifyPostThrowsExceptionOnNoMatch(): void
+    {
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'POST')
+            ->setPost('csrf_test_name', self::CORRECT_CSRF_HASH)
+            ->setCookie('csrf_cookie_name', self::INVALID_CSRF_HASH);
+
+        $security = $this->createMockSecurity();
+        $request  = $this->createIncomingRequest();
 
         $this->expectException(SecurityException::class);
         $security->verify($request);
     }
 
-    public function testCSRFVerifyPostReturnsSelfOnMatch()
+    public function testCsrfVerifyPostReturnsSelfOnMatch(): void
     {
-        $security = new MockSecurity(new MockAppConfig());
-        $request  = new IncomingRequest(new MockAppConfig(), new URI('http://badurl.com'), null, new UserAgent());
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'POST')
+            ->setPost('foo', 'bar')
+            ->setPost('csrf_test_name', self::CORRECT_CSRF_HASH)
+            ->setCookie('csrf_cookie_name', self::CORRECT_CSRF_HASH);
 
-        $_SERVER['REQUEST_METHOD']   = 'POST';
-        $_POST['foo']                = 'bar';
-        $_POST['csrf_test_name']     = '8b9218a55906f9dcc1dc263dce7f005a';
-        $_COOKIE['csrf_cookie_name'] = '8b9218a55906f9dcc1dc263dce7f005a';
+        $security = $this->createMockSecurity();
+        $request  = $this->createIncomingRequest();
 
         $this->assertInstanceOf(Security::class, $security->verify($request));
         $this->assertLogged('info', 'CSRF token verified.');
 
-        $this->assertTrue(count($_POST) === 1);
+        $this->assertCount(1, service('superglobals')->getPostArray());
     }
 
-    public function testCSRFVerifyHeaderThrowsExceptionOnNoMatch()
+    public function testCsrfVerifyHeaderThrowsExceptionOnNoMatch(): void
     {
-        $security = new MockSecurity(new MockAppConfig());
-        $request  = new IncomingRequest(new MockAppConfig(), new URI('http://badurl.com'), null, new UserAgent());
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'POST')
+            ->setCookie('csrf_cookie_name', self::INVALID_CSRF_HASH);
 
-        $request->setHeader('X-CSRF-TOKEN', '8b9218a55906f9dcc1dc263dce7f005a');
+        $security = $this->createMockSecurity();
+        $request  = $this->createIncomingRequest();
 
-        $_SERVER['REQUEST_METHOD']   = 'POST';
-        $_COOKIE['csrf_cookie_name'] = '8b9218a55906f9dcc1dc263dce7f005b';
+        $request->setHeader('X-CSRF-TOKEN', self::CORRECT_CSRF_HASH);
 
         $this->expectException(SecurityException::class);
         $security->verify($request);
     }
 
-    public function testCSRFVerifyHeaderReturnsSelfOnMatch()
+    public function testCsrfVerifyHeaderReturnsSelfOnMatch(): void
     {
-        $security = new MockSecurity(new MockAppConfig());
-        $request  = new IncomingRequest(new MockAppConfig(), new URI('http://badurl.com'), null, new UserAgent());
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'POST')
+            ->setPost('foo', 'bar')
+            ->setCookie('csrf_cookie_name', self::CORRECT_CSRF_HASH);
 
-        $request->setHeader('X-CSRF-TOKEN', '8b9218a55906f9dcc1dc263dce7f005a');
+        $security = $this->createMockSecurity();
+        $request  = $this->createIncomingRequest();
 
-        $_SERVER['REQUEST_METHOD']   = 'POST';
-        $_POST['foo']                = 'bar';
-        $_COOKIE['csrf_cookie_name'] = '8b9218a55906f9dcc1dc263dce7f005a';
+        $request->setHeader('X-CSRF-TOKEN', self::CORRECT_CSRF_HASH);
 
         $this->assertInstanceOf(Security::class, $security->verify($request));
         $this->assertLogged('info', 'CSRF token verified.');
 
-        $this->assertCount(1, $_POST);
+        $this->assertSame(['foo' => 'bar'], service('superglobals')->getPostArray());
     }
 
-    public function testCSRFVerifyJsonThrowsExceptionOnNoMatch()
+    public function testCsrfVerifyJsonThrowsExceptionOnNoMatch(): void
     {
-        $security = new MockSecurity(new MockAppConfig());
-        $request  = new IncomingRequest(new MockAppConfig(), new URI('http://badurl.com'), null, new UserAgent());
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'POST')
+            ->setCookie('csrf_cookie_name', self::INVALID_CSRF_HASH);
 
-        $request->setBody('{"csrf_test_name":"8b9218a55906f9dcc1dc263dce7f005a"}');
+        $security = $this->createMockSecurity();
+        $request  = $this->createIncomingRequest();
 
-        $_SERVER['REQUEST_METHOD']   = 'POST';
-        $_COOKIE['csrf_cookie_name'] = '8b9218a55906f9dcc1dc263dce7f005b';
+        $request->setBody(
+            '{"csrf_test_name":"' . self::CORRECT_CSRF_HASH . '"}',
+        );
 
         $this->expectException(SecurityException::class);
         $security->verify($request);
     }
 
-    public function testCSRFVerifyJsonReturnsSelfOnMatch()
+    public function testCsrfVerifyJsonReturnsSelfOnMatch(): void
     {
-        $security = new MockSecurity(new MockAppConfig());
-        $request  = new IncomingRequest(new MockAppConfig(), new URI('http://badurl.com'), null, new UserAgent());
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'POST')
+            ->setCookie('csrf_cookie_name', self::CORRECT_CSRF_HASH);
 
-        $request->setBody('{"csrf_test_name":"8b9218a55906f9dcc1dc263dce7f005a","foo":"bar"}');
+        $security = $this->createMockSecurity();
+        $request  = $this->createIncomingRequest();
 
-        $_SERVER['REQUEST_METHOD']   = 'POST';
-        $_COOKIE['csrf_cookie_name'] = '8b9218a55906f9dcc1dc263dce7f005a';
+        $request->setBody(
+            '{"csrf_test_name":"' . self::CORRECT_CSRF_HASH . '","foo":"bar"}',
+        );
 
         $this->assertInstanceOf(Security::class, $security->verify($request));
         $this->assertLogged('info', 'CSRF token verified.');
 
-        $this->assertTrue($request->getBody() === '{"foo":"bar"}');
+        $this->assertSame('{"foo":"bar"}', $request->getBody());
     }
 
-    public function testSanitizeFilename()
+    public function testCsrfVerifyHeaderWithJsonBodyPreservesBody(): void
     {
-        $security = new MockSecurity(new MockAppConfig());
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'POST')
+            ->setCookie('csrf_cookie_name', self::CORRECT_CSRF_HASH);
+
+        $security = $this->createMockSecurity();
+        $request  = $this->createIncomingRequest();
+        $body     = '{"foo":"bar"}';
+
+        $request->setHeader('X-CSRF-TOKEN', self::CORRECT_CSRF_HASH);
+        $request->setBody($body);
+
+        $this->assertInstanceOf(Security::class, $security->verify($request));
+        $this->assertSame($body, $request->getBody());
+    }
+
+    public function testCsrfVerifyHeaderWithJsonBodyStripsTokenFromBody(): void
+    {
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'POST')
+            ->setCookie('csrf_cookie_name', self::CORRECT_CSRF_HASH);
+
+        $security = $this->createMockSecurity();
+        $request  = $this->createIncomingRequest();
+
+        $request->setHeader('X-CSRF-TOKEN', self::CORRECT_CSRF_HASH);
+        $request->setBody('{"csrf_test_name":"' . self::CORRECT_CSRF_HASH . '","foo":"bar"}');
+
+        $this->assertInstanceOf(Security::class, $security->verify($request));
+        $this->assertSame('{"foo":"bar"}', $request->getBody());
+    }
+
+    #[DataProvider('provideCsrfVerifyPreservesNonObjectJsonBody')]
+    public function testCsrfVerifyPreservesNonObjectJsonBody(string $body): void
+    {
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'POST')
+            ->setCookie('csrf_cookie_name', self::CORRECT_CSRF_HASH);
+
+        $security = $this->createMockSecurity();
+        $request  = $this->createIncomingRequest();
+
+        $request->setHeader('X-CSRF-TOKEN', self::CORRECT_CSRF_HASH);
+        $request->setBody($body);
+
+        $this->assertInstanceOf(Security::class, $security->verify($request));
+        $this->assertSame($body, $request->getBody());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function provideCsrfVerifyPreservesNonObjectJsonBody(): iterable
+    {
+        yield 'JSON array' => ['[{"foo":"bar"}]'];
+
+        yield 'JSON array of scalars' => ['[1, 2, 3]'];
+
+        yield 'JSON number' => ['123'];
+
+        yield 'JSON boolean' => ['true'];
+
+        yield 'JSON null' => ['null'];
+
+        yield 'JSON string' => ['"foo"'];
+    }
+
+    public function testCsrfVerifyPutBodyThrowsExceptionOnNoMatch(): void
+    {
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'PUT')
+            ->setCookie('csrf_cookie_name', self::INVALID_CSRF_HASH);
+
+        $security = $this->createMockSecurity();
+        $request  = $this->createIncomingRequest();
+
+        $request->setBody(
+            'csrf_test_name=' . self::CORRECT_CSRF_HASH,
+        );
+
+        $this->expectException(SecurityException::class);
+        $security->verify($request);
+    }
+
+    public function testCsrfVerifyPutBodyReturnsSelfOnMatch(): void
+    {
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'PUT')
+            ->setCookie('csrf_cookie_name', self::CORRECT_CSRF_HASH);
+
+        $security = $this->createMockSecurity();
+        $request  = $this->createIncomingRequest();
+
+        $request->setBody(
+            'csrf_test_name=' . self::CORRECT_CSRF_HASH . '&foo=bar',
+        );
+
+        $this->assertInstanceOf(Security::class, $security->verify($request));
+        $this->assertLogged('info', 'CSRF token verified.');
+
+        $this->assertSame('foo=bar', $request->getBody());
+    }
+
+    public function testSanitizeFilename(): void
+    {
+        $security = $this->createMockSecurity();
 
         $filename = './<!--foo-->';
 
         $this->assertSame('foo', $security->sanitizeFilename($filename));
     }
 
-    public function testRegenerateWithFalseSecurityRegenerateProperty()
+    public function testSanitizeFilenameBackslashTraversal(): void
     {
+        $security  = $this->createMockSecurity();
+        $separator = str_repeat(chr(92), 2);
+        $filename  = '..' . $separator . '..' . $separator . 'public' . $separator . 'file.txt';
+
+        $this->assertSame('....publicfile.txt', $security->sanitizeFilename($filename));
+        $this->assertSame('file.txt', $security->sanitizeFilename('.' . chr(92) . './file.txt', true));
+    }
+
+    public function testRegenerateWithFalseSecurityRegenerateProperty(): void
+    {
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'POST')
+            ->setPost('csrf_test_name', self::CORRECT_CSRF_HASH)
+            ->setCookie('csrf_cookie_name', self::CORRECT_CSRF_HASH);
+
         $config             = new SecurityConfig();
         $config->regenerate = false;
         Factories::injectMock('config', 'Security', $config);
 
-        $security = new MockSecurity(new MockAppConfig());
-        $request  = new IncomingRequest(new MockAppConfig(), new URI('http://badurl.com'), null, new UserAgent());
-
-        $_SERVER['REQUEST_METHOD']   = 'POST';
-        $_POST['csrf_test_name']     = '8b9218a55906f9dcc1dc263dce7f005a';
-        $_COOKIE['csrf_cookie_name'] = '8b9218a55906f9dcc1dc263dce7f005a';
+        $security = new MockSecurity($config);
+        $request  = $this->createIncomingRequest();
 
         $oldHash = $security->getHash();
         $security->verify($request);
@@ -188,18 +348,41 @@ final class SecurityTest extends CIUnitTestCase
         $this->assertSame($oldHash, $newHash);
     }
 
-    public function testRegenerateWithTrueSecurityRegenerateProperty()
+    public function testRegenerateWithFalseSecurityRegeneratePropertyManually(): void
     {
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'POST')
+            ->setPost('csrf_test_name', self::CORRECT_CSRF_HASH)
+            ->setCookie('csrf_cookie_name', self::CORRECT_CSRF_HASH);
+
+        $config             = new SecurityConfig();
+        $config->regenerate = false;
+        Factories::injectMock('config', 'Security', $config);
+
+        $security = $this->createMockSecurity($config);
+        $request  = $this->createIncomingRequest();
+
+        $oldHash = $security->getHash();
+        $security->verify($request);
+        $security->generateHash();
+        $newHash = $security->getHash();
+
+        $this->assertNotSame($oldHash, $newHash);
+    }
+
+    public function testRegenerateWithTrueSecurityRegenerateProperty(): void
+    {
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'POST')
+            ->setPost('csrf_test_name', self::CORRECT_CSRF_HASH)
+            ->setCookie('csrf_cookie_name', self::CORRECT_CSRF_HASH);
+
         $config             = new SecurityConfig();
         $config->regenerate = true;
         Factories::injectMock('config', 'Security', $config);
 
-        $security = new MockSecurity(new MockAppConfig());
-        $request  = new IncomingRequest(new MockAppConfig(), new URI('http://badurl.com'), null, new UserAgent());
-
-        $_SERVER['REQUEST_METHOD']   = 'POST';
-        $_POST['csrf_test_name']     = '8b9218a55906f9dcc1dc263dce7f005a';
-        $_COOKIE['csrf_cookie_name'] = '8b9218a55906f9dcc1dc263dce7f005a';
+        $security = $this->createMockSecurity($config);
+        $request  = $this->createIncomingRequest();
 
         $oldHash = $security->getHash();
         $security->verify($request);
@@ -210,53 +393,88 @@ final class SecurityTest extends CIUnitTestCase
 
     public function testGetters(): void
     {
-        $security = new MockSecurity(new MockAppConfig());
+        $security = $this->createMockSecurity();
+
+        $this->assertSame(32, strlen($security->getHash()));
+        $this->assertSame('csrf_test_name', $security->getTokenName());
+        $this->assertSame('X-CSRF-TOKEN', $security->getHeaderName());
+        $this->assertSame('csrf_cookie_name', $security->getCookieName());
+        $this->assertFalse($security->shouldRedirect());
+    }
+
+    public function testGetPostedTokenReturnsTokenFromPost(): void
+    {
+        service('superglobals')->setPost('csrf_test_name', self::CORRECT_CSRF_HASH);
+        $request = $this->createIncomingRequest();
+        $method  = self::getPrivateMethodInvoker($this->createMockSecurity(), 'getPostedToken');
+
+        $this->assertSame(self::CORRECT_CSRF_HASH, $method($request));
+    }
+
+    public function testGetPostedTokenReturnsTokenFromHeader(): void
+    {
+        $request = $this->createIncomingRequest()->setHeader('X-CSRF-TOKEN', self::CORRECT_CSRF_HASH);
+        $method  = self::getPrivateMethodInvoker($this->createMockSecurity(), 'getPostedToken');
+
+        $this->assertSame(self::CORRECT_CSRF_HASH, $method($request));
+    }
+
+    public function testGetPostedTokenReturnsTokenFromJsonBody(): void
+    {
+        $jsonBody = json_encode(['csrf_test_name' => self::CORRECT_CSRF_HASH]);
+        $request  = $this->createIncomingRequest()->setBody($jsonBody);
+        $method   = self::getPrivateMethodInvoker($this->createMockSecurity(), 'getPostedToken');
+
+        $this->assertSame(self::CORRECT_CSRF_HASH, $method($request));
+    }
+
+    public function testGetPostedTokenReturnsTokenFromFormBody(): void
+    {
+        $formBody = 'csrf_test_name=' . self::CORRECT_CSRF_HASH;
+        $request  = $this->createIncomingRequest()->setBody($formBody);
+        $method   = self::getPrivateMethodInvoker($this->createMockSecurity(), 'getPostedToken');
+
+        $this->assertSame(self::CORRECT_CSRF_HASH, $method($request));
+    }
+
+    #[DataProvider('provideGetPostedTokenReturnsNullForInvalidInputs')]
+    public function testGetPostedTokenReturnsNullForInvalidInputs(IncomingRequest $request): void
+    {
+        $getPostedToken = self::getPrivateMethodInvoker($this->createMockSecurity(), 'getPostedToken');
+
+        $this->assertNull($getPostedToken($request));
+    }
+
+    /**
+     * @return iterable<string, array{IncomingRequest}>
+     */
+    public static function provideGetPostedTokenReturnsNullForInvalidInputs(): iterable
+    {
+        yield 'empty_post' => [self::createIncomingRequest()];
+
+        yield 'invalid_post_data' => [self::createIncomingRequest()->setGlobal('post', ['csrf_test_name' => ['invalid' => 'data']])];
+
+        yield 'empty_header' => [self::createIncomingRequest()->setHeader('X-CSRF-TOKEN', '')];
+
+        yield 'invalid_json_data' => [self::createIncomingRequest()->setBody(json_encode(['csrf_test_name' => ['invalid' => 'data']]))];
+
+        yield 'invalid_json' => [self::createIncomingRequest()->setBody('{invalid json}')];
+
+        yield 'missing_token_in_body' => [self::createIncomingRequest()->setBody('other=value&another=test')];
+
+        yield 'invalid_form_data' => [self::createIncomingRequest()->setBody('csrf_test_name[]=invalid')];
+    }
+
+    public function testConstructorHandlesArrayCookieWithoutTypeError(): void
+    {
+        service('superglobals')
+            ->setServer('REQUEST_METHOD', 'GET')
+            ->setCookie('csrf_cookie_name', ['malicious' => 'array']);
+
+        $config   = new SecurityConfig();
+        $security = new Security($config);
 
         $this->assertIsString($security->getHash());
-        $this->assertIsString($security->getTokenName());
-        $this->assertIsString($security->getHeaderName());
-        $this->assertIsString($security->getCookieName());
-        $this->assertIsBool($security->shouldRedirect());
-    }
-
-    public function testSendingCookiesFalse(): void
-    {
-        $request = $this->createMock(IncomingRequest::class);
-        $request->method('isSecure')->willReturn(false);
-
-        $config = new CookieConfig();
-
-        $config->secure = true;
-        Factories::injectMock('config', CookieConfig::class, $config);
-
-        $security = $this->getMockBuilder(Security::class)
-            ->setConstructorArgs([new MockAppConfig()])
-            ->onlyMethods(['doSendCookie'])
-            ->getMock();
-
-        $sendCookie = $this->getPrivateMethodInvoker($security, 'sendCookie');
-
-        $security->expects($this->never())->method('doSendCookie');
-        $this->assertFalse($sendCookie($request));
-    }
-
-    public function testSendingGoodCookies(): void
-    {
-        $request = $this->createMock(IncomingRequest::class);
-        $request->method('isSecure')->willReturn(true);
-
-        $config = new MockAppConfig();
-
-        $config->cookieSecure = true;
-
-        $security = $this->getMockBuilder(Security::class)
-            ->setConstructorArgs([$config])
-            ->onlyMethods(['doSendCookie'])
-            ->getMock();
-
-        $sendCookie = $this->getPrivateMethodInvoker($security, 'sendCookie');
-
-        $security->expects($this->once())->method('doSendCookie');
-        $this->assertInstanceOf(Security::class, $sendCookie($request));
+        $this->assertSame(32, strlen($security->getHash()));
     }
 }

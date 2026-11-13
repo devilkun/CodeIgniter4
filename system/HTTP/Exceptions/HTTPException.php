@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -16,12 +18,12 @@ use CodeIgniter\Exceptions\FrameworkException;
 /**
  * Things that can go wrong with HTTP
  */
-class HTTPException extends FrameworkException
+class HTTPException extends FrameworkException implements ExceptionInterface
 {
     /**
      * For CurlRequest
      *
-     * @return HTTPException
+     * @return static
      *
      * @codeCoverageIgnore
      */
@@ -33,7 +35,7 @@ class HTTPException extends FrameworkException
     /**
      * For CurlRequest
      *
-     * @return HTTPException
+     * @return static
      */
     public static function forSSLCertNotFound(string $cert)
     {
@@ -43,7 +45,7 @@ class HTTPException extends FrameworkException
     /**
      * For CurlRequest
      *
-     * @return HTTPException
+     * @return static
      */
     public static function forInvalidSSLKey(string $key)
     {
@@ -73,13 +75,26 @@ class HTTPException extends FrameworkException
     }
 
     /**
+     * Thrown in IncomingRequest when the json_decode() produces
+     *  an error code other than JSON_ERROR_NONE.
+     *
+     * @param string $error The error message
+     *
+     * @return static
+     */
+    public static function forInvalidJSON(?string $error = null)
+    {
+        return new static(lang('HTTP.invalidJSON', [$error]));
+    }
+
+    /**
      * For Message
      *
      * @return HTTPException
      */
-    public static function forInvalidHTTPProtocol(string $protocols)
+    public static function forInvalidHTTPProtocol(string $invalidVersion)
     {
-        return new static(lang('HTTP.invalidHTTPProtocol', [$protocols]));
+        return new static(lang('HTTP.invalidHTTPProtocol', [$invalidVersion]));
     }
 
     /**
@@ -175,7 +190,7 @@ class HTTPException extends FrameworkException
     /**
      * For Uploaded file move
      *
-     * @return HTTPException
+     * @return static
      */
     public static function forAlreadyMoved()
     {
@@ -185,11 +200,19 @@ class HTTPException extends FrameworkException
     /**
      * For Uploaded file move
      *
-     * @return HTTPException
+     * @return static
      */
     public static function forInvalidFile(?string $path = null)
     {
         return new static(lang('HTTP.invalidFile'));
+    }
+
+    /**
+     * For Uploaded file move
+     */
+    public static function forInvalidFileName(): static
+    {
+        return new static(lang('HTTP.invalidFileName'));
     }
 
     /**
@@ -214,5 +237,16 @@ class HTTPException extends FrameworkException
     public static function forInvalidSameSiteSetting(string $samesite)
     {
         return new static(lang('Security.invalidSameSiteSetting', [$samesite]));
+    }
+
+    /**
+     * Thrown when the JSON format is not supported.
+     * This is specifically for cases where data validation is expected to work with key-value structures.
+     *
+     * @return HTTPException
+     */
+    public static function forUnsupportedJSONFormat()
+    {
+        return new static(lang('HTTP.unsupportedJSONFormat'));
     }
 }

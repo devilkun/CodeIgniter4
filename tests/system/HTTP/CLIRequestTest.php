@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,44 +13,44 @@
 
 namespace CodeIgniter\HTTP;
 
+use CodeIgniter\Config\Services;
+use CodeIgniter\Superglobals;
 use CodeIgniter\Test\CIUnitTestCase;
 use Config\App;
+use PHPUnit\Framework\Attributes\BackupGlobals;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * This should be the same as RequestTest,
  * except also testing the methods added by CLIRequest
  *
- * @backupGlobals enabled
- *
  * @internal
  */
+#[BackupGlobals(true)]
+#[Group('Others')]
 final class CLIRequestTest extends CIUnitTestCase
 {
-    /**
-     * @var CLIRequest
-     */
-    protected $request;
+    private CLIRequest $request;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->request = new CLIRequest(new App());
+        Services::injectMock('superglobals', new Superglobals(['argv' => []], [], [], [], []));
 
-        $_POST = [];
-        $_GET  = [];
+        $this->request = new CLIRequest(new App());
     }
 
-    public function testParsingSegments()
+    public function testParsingSegments(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
             'index.php',
             'users',
             '21',
             'profile',
             '-foo',
             'bar',
-        ];
+        ]);
 
         // reinstantiate it to force parsing
         $this->request = new CLIRequest(new App());
@@ -61,9 +63,33 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame($segments, $this->request->getSegments());
     }
 
-    public function testParsingOptions()
+    public function testParsingSegmentsWithHTMLMetaChars(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
+            'index.php',
+            'users',
+            '21',
+            'abc < def',
+            "McDonald's",
+            '<s>aaa</s>',
+        ]);
+
+        // reinstantiate it to force parsing
+        $this->request = new CLIRequest(new App());
+
+        $segments = [
+            'users',
+            '21',
+            'abc < def',
+            "McDonald's",
+            '<s>aaa</s>',
+        ];
+        $this->assertSame($segments, $this->request->getSegments());
+    }
+
+    public function testParsingOptions(): void
+    {
+        service('superglobals')->setServer('argv', [
             'index.php',
             'users',
             '21',
@@ -72,7 +98,7 @@ final class CLIRequestTest extends CIUnitTestCase
             'bar',
             '--foo-bar',
             'yes',
-        ];
+        ]);
 
         // reinstantiate it to force parsing
         $this->request = new CLIRequest(new App());
@@ -84,16 +110,16 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame($options, $this->request->getOptions());
     }
 
-    public function testParsingOptionDetails()
+    public function testParsingOptionDetails(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
             'index.php',
             'users',
             '21',
             'profile',
             '--foo',
             'bar',
-        ];
+        ]);
 
         // reinstantiate it to force parsing
         $this->request = new CLIRequest(new App());
@@ -102,9 +128,9 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertNull($this->request->getOption('notthere'));
     }
 
-    public function testParsingOptionString()
+    public function testParsingOptionString(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
             'index.php',
             'users',
             '21',
@@ -113,7 +139,7 @@ final class CLIRequestTest extends CIUnitTestCase
             'bar',
             '--baz',
             'queue some stuff',
-        ];
+        ]);
 
         // reinstantiate it to force parsing
         $this->request = new CLIRequest(new App());
@@ -122,14 +148,14 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame('--foo bar --baz "queue some stuff"', $this->request->getOptionString(true));
     }
 
-    public function testParsingNoOptions()
+    public function testParsingNoOptions(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
             'index.php',
             'users',
             '21',
             'profile',
-        ];
+        ]);
 
         // reinstantiate it to force parsing
         $this->request = new CLIRequest(new App());
@@ -138,16 +164,44 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame($expected, $this->request->getOptionString());
     }
 
-    public function testParsingPath()
+    public function testParsingArgs(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
+            'spark',
+            'command',
+            'param1',
+            'param2',
+            '--opt1',
+            'opt1val',
+            '--opt-2',
+            'opt 2 val',
+            'param3',
+        ]);
+
+        // reinstantiate it to force parsing
+        $this->request = new CLIRequest(new App());
+
+        $options = [
+            'command',
+            'param1',
+            'param2',
+            'opt1'  => 'opt1val',
+            'opt-2' => 'opt 2 val',
+            'param3',
+        ];
+        $this->assertSame($options, $this->request->getArgs());
+    }
+
+    public function testParsingPath(): void
+    {
+        service('superglobals')->setServer('argv', [
             'index.php',
             'users',
             '21',
             'profile',
             '--foo',
             'bar',
-        ];
+        ]);
 
         // reinstantiate it to force parsing
         $this->request = new CLIRequest(new App());
@@ -155,9 +209,9 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame('users/21/profile', $this->request->getPath());
     }
 
-    public function testParsingMalformed()
+    public function testParsingMalformed(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
             'index.php',
             'users',
             '21',
@@ -166,7 +220,7 @@ final class CLIRequestTest extends CIUnitTestCase
             'bar',
             '--baz',
             'queue some stuff',
-        ];
+        ]);
 
         // reinstantiate it to force parsing
         $this->request = new CLIRequest(new App());
@@ -176,9 +230,9 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame('users/21/pro-file', $this->request->getPath());
     }
 
-    public function testParsingMalformed2()
+    public function testParsingMalformed2(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
             'index.php',
             'users',
             '21',
@@ -187,7 +241,7 @@ final class CLIRequestTest extends CIUnitTestCase
             'oops-bar',
             '--baz',
             'queue some stuff',
-        ];
+        ]);
 
         // reinstantiate it to force parsing
         $this->request = new CLIRequest(new App());
@@ -197,9 +251,9 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame('users/21/profile', $this->request->getPath());
     }
 
-    public function testParsingMalformed3()
+    public function testParsingMalformed3(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
             'index.php',
             'users',
             '21',
@@ -209,7 +263,7 @@ final class CLIRequestTest extends CIUnitTestCase
             'bar',
             '--baz',
             'queue some stuff',
-        ];
+        ]);
 
         // reinstantiate it to force parsing
         $this->request = new CLIRequest(new App());
@@ -219,21 +273,21 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame('users/21/profile/bar', $this->request->getPath());
     }
 
-    public function testFetchGlobalsSingleValue()
+    public function testFetchGlobalsSingleValue(): void
     {
-        $_POST['foo'] = 'bar';
-        $_GET['bar']  = 'baz';
+        service('superglobals')->setPost('foo', 'bar');
+        service('superglobals')->setGet('bar', 'baz');
 
         $this->assertSame('bar', $this->request->fetchGlobal('post', 'foo'));
         $this->assertSame('baz', $this->request->fetchGlobal('get', 'bar'));
     }
 
-    public function testFetchGlobalsReturnsNullWhenNotFound()
+    public function testFetchGlobalsReturnsNullWhenNotFound(): void
     {
         $this->assertNull($this->request->fetchGlobal('post', 'foo'));
     }
 
-    public function testFetchGlobalsFiltersValues()
+    public function testFetchGlobalsFiltersValues(): void
     {
         $this->request->setGlobal('post', [
             'foo' => 'bar<script>',
@@ -244,7 +298,7 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame('baz', $this->request->fetchGlobal('post', 'bar'));
     }
 
-    public function testFetchGlobalsWithFilterFlag()
+    public function testFetchGlobalsWithFilterFlag(): void
     {
         $this->request->setGlobal('post', [
             'foo' => '`bar<script>',
@@ -255,7 +309,7 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame('baz', $this->request->fetchGlobal('post', 'bar'));
     }
 
-    public function testFetchGlobalReturnsAllWhenEmpty()
+    public function testFetchGlobalReturnsAllWhenEmpty(): void
     {
         $post = [
             'foo' => 'bar',
@@ -268,7 +322,7 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame($post, $this->request->fetchGlobal('post'));
     }
 
-    public function testFetchGlobalFiltersAllValues()
+    public function testFetchGlobalFiltersAllValues(): void
     {
         $post = [
             'foo' => 'bar<script>',
@@ -287,7 +341,7 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame($expected, $this->request->fetchGlobal('post', null, FILTER_SANITIZE_ENCODED));
     }
 
-    public function testFetchGlobalFilterWithFlagAllValues()
+    public function testFetchGlobalFilterWithFlagAllValues(): void
     {
         $post = [
             'foo' => '`bar<script>',
@@ -306,7 +360,7 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame($expected, $this->request->fetchGlobal('post', null, FILTER_SANITIZE_ENCODED, FILTER_FLAG_STRIP_BACKTICK));
     }
 
-    public function testFetchGlobalReturnsSelectedKeys()
+    public function testFetchGlobalReturnsSelectedKeys(): void
     {
         $post = [
             'foo' => 'bar',
@@ -323,7 +377,7 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame($expected, $this->request->fetchGlobal('post', ['foo', 'bar']));
     }
 
-    public function testFetchGlobalFiltersSelectedValues()
+    public function testFetchGlobalFiltersSelectedValues(): void
     {
         $post = [
             'foo' => 'bar<script>',
@@ -340,7 +394,7 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame($expected, $this->request->fetchGlobal('post', ['foo', 'bar'], FILTER_SANITIZE_ENCODED));
     }
 
-    public function testFetchGlobalFilterWithFlagSelectedValues()
+    public function testFetchGlobalFilterWithFlagSelectedValues(): void
     {
         $post = [
             'foo' => '`bar<script>',
@@ -360,7 +414,7 @@ final class CLIRequestTest extends CIUnitTestCase
     /**
      * @see https://github.com/codeigniter4/CodeIgniter4/issues/353
      */
-    public function testFetchGlobalReturnsArrayValues()
+    public function testFetchGlobalReturnsArrayValues(): void
     {
         $post = [
             'ANNOUNCEMENTS' => [
@@ -377,11 +431,10 @@ final class CLIRequestTest extends CIUnitTestCase
         $result = $this->request->fetchGlobal('post');
 
         $this->assertSame($post, $result);
-        $this->assertIsArray($result['ANNOUNCEMENTS']);
         $this->assertCount(2, $result['ANNOUNCEMENTS']);
     }
 
-    public function testFetchGlobalWithArrayTop()
+    public function testFetchGlobalWithArrayTop(): void
     {
         $post = [
             'clients' => [
@@ -395,7 +448,7 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame(['address' => ['zipcode' => 90210]], $this->request->fetchGlobal('post', 'clients'));
     }
 
-    public function testFetchGlobalWithArrayChildNumeric()
+    public function testFetchGlobalWithArrayChildNumeric(): void
     {
         $post = [
             'clients' => [
@@ -416,7 +469,7 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame(['zipcode' => 60610], $this->request->fetchGlobal('post', 'clients[1][address]'));
     }
 
-    public function testFetchGlobalWithArrayChildElement()
+    public function testFetchGlobalWithArrayChildElement(): void
     {
         $post = [
             'clients' => [
@@ -431,7 +484,7 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertNull($this->request->fetchGlobal('post', 'clients[zipcode]'));
     }
 
-    public function testFetchGlobalWithKeylessArrayChildElement()
+    public function testFetchGlobalWithKeylessArrayChildElement(): void
     {
         $post = [
             'clients' => [
@@ -446,7 +499,7 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame([['a']], $this->request->fetchGlobal('post', 'clients[stuff]'));
     }
 
-    public function testFetchGlobalWithArrayLastElement()
+    public function testFetchGlobalWithArrayLastElement(): void
     {
         $post = ['clients' => ['address' => ['zipcode' => 90210]]];
         $this->request->setGlobal('post', $post);
@@ -454,7 +507,7 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame('90210', $this->request->fetchGlobal('post', 'clients[address][zipcode]'));
     }
 
-    public function testFetchGlobalWithEmptyNotation()
+    public function testFetchGlobalWithEmptyNotation(): void
     {
         $expected = [
             ['address' => ['zipcode' => '90210']],
@@ -466,155 +519,69 @@ final class CLIRequestTest extends CIUnitTestCase
         $this->assertSame($expected, $this->request->fetchGlobal('post', 'clients[]'));
     }
 
-    public function ipAddressChecks()
-    {
-        return [
-            'empty' => [
-                false,
-                '',
-            ],
-            'zero' => [
-                false,
-                0,
-            ],
-            'large_ipv4' => [
-                false,
-                '256.256.256.999',
-                'ipv4',
-            ],
-            'good_ipv4' => [
-                true,
-                '100.100.100.0',
-                'ipv4',
-            ],
-            'good_default' => [
-                true,
-                '100.100.100.0',
-            ],
-            'zeroed_ipv4' => [
-                true,
-                '0.0.0.0',
-            ],
-            'large_ipv6' => [
-                false,
-                'h123:0000:0000:0000:0000:0000:0000:0000',
-                'ipv6',
-            ],
-            'good_ipv6' => [
-                true,
-                '2001:0db8:85a3:0000:0000:8a2e:0370:7334',
-            ],
-            'confused_ipv6' => [
-                false,
-                '255.255.255.255',
-                'ipv6',
-            ],
-        ];
-    }
-
-    /**
-     * @dataProvider ipAddressChecks
-     *
-     * @param mixed      $expected
-     * @param mixed      $address
-     * @param mixed|null $type
-     */
-    public function testValidIPAddress($expected, $address, $type = null)
-    {
-        $this->assertSame($expected, $this->request->isValidIP($address, $type));
-    }
-
-    public function testGetIPAddressDefault()
+    public function testGetIPAddressDefault(): void
     {
         $this->assertSame('0.0.0.0', $this->request->getIPAddress());
     }
 
-    public function testGetIPAddressNormal()
-    {
-        $expected               = '123.123.123.123';
-        $_SERVER['REMOTE_ADDR'] = $expected;
-        $this->request          = new Request(new App());
-        $this->assertSame($expected, $this->request->getIPAddress());
-        // call a second time to exercise the initial conditional block in getIPAddress()
-        $this->assertSame($expected, $this->request->getIPAddress());
-    }
-
-    public function testGetIPAddressThruProxy()
-    {
-        $expected                        = '123.123.123.123';
-        $_SERVER['REMOTE_ADDR']          = '10.0.1.200';
-        $config                          = new App();
-        $config->proxyIPs                = '10.0.1.200,192.168.5.0/24';
-        $_SERVER['HTTP_X_FORWARDED_FOR'] = $expected;
-        $this->request                   = new Request($config);
-
-        // we should see the original forwarded address
-        $this->assertSame($expected, $this->request->getIPAddress());
-    }
-
-    public function testGetIPAddressThruProxyInvalid()
-    {
-        $expected                        = '123.456.23.123';
-        $_SERVER['REMOTE_ADDR']          = '10.0.1.200';
-        $config                          = new App();
-        $config->proxyIPs                = '10.0.1.200,192.168.5.0/24';
-        $_SERVER['HTTP_X_FORWARDED_FOR'] = $expected;
-        $this->request                   = new Request($config);
-
-        // spoofed address invalid
-        $this->assertSame('10.0.1.200', $this->request->getIPAddress());
-    }
-
-    public function testGetIPAddressThruProxyNotWhitelisted()
-    {
-        $expected                        = '123.456.23.123';
-        $_SERVER['REMOTE_ADDR']          = '10.10.1.200';
-        $config                          = new App();
-        $config->proxyIPs                = '10.0.1.200,192.168.5.0/24';
-        $_SERVER['HTTP_X_FORWARDED_FOR'] = $expected;
-        $this->request                   = new Request($config);
-
-        // spoofed address invalid
-        $this->assertSame('10.10.1.200', $this->request->getIPAddress());
-    }
-
-    public function testGetIPAddressThruProxySubnet()
-    {
-        $expected                        = '123.123.123.123';
-        $_SERVER['REMOTE_ADDR']          = '192.168.5.21';
-        $config                          = new App();
-        $config->proxyIPs                = ['192.168.5.0/24'];
-        $_SERVER['HTTP_X_FORWARDED_FOR'] = $expected;
-        $this->request                   = new Request($config);
-
-        // we should see the original forwarded address
-        $this->assertSame($expected, $this->request->getIPAddress());
-    }
-
-    public function testGetIPAddressThruProxyOutofSubnet()
-    {
-        $expected                        = '123.123.123.123';
-        $_SERVER['REMOTE_ADDR']          = '192.168.5.21';
-        $config                          = new App();
-        $config->proxyIPs                = ['192.168.5.0/28'];
-        $_SERVER['HTTP_X_FORWARDED_FOR'] = $expected;
-        $this->request                   = new Request($config);
-
-        // we should see the original forwarded address
-        $this->assertSame('192.168.5.21', $this->request->getIPAddress());
-    }
-
-    // FIXME getIPAddress should have more testing, to 100% code coverage
-
-    public function testMethodReturnsRightStuff()
+    public function testMethodReturnsRightStuff(): void
     {
         // Defaults method to CLI now.
-        $this->assertSame('cli', $this->request->getMethod());
-        $this->assertSame('CLI', $this->request->getMethod(true));
+        $this->assertSame('CLI', $this->request->getMethod());
     }
 
-    public function testMethodIsCliReturnsAlwaysTrue()
+    public function testMethodIsCliReturnsAlwaysTrue(): void
     {
         $this->assertTrue($this->request->isCLI());
+    }
+
+    public function testGetGet(): void
+    {
+        $this->assertSame([], $this->request->getGet());
+        $this->assertNull($this->request->getGet('test'));
+        $this->assertSame([], $this->request->getGet(['test', 'abc']));
+    }
+
+    public function testGetPost(): void
+    {
+        $this->assertSame([], $this->request->getPost());
+    }
+
+    public function testGetPostGet(): void
+    {
+        $this->assertSame([], $this->request->getPostGet());
+    }
+
+    public function testGetGetPost(): void
+    {
+        $this->assertSame([], $this->request->getGetPost());
+    }
+
+    public function testGetLocale(): void
+    {
+        $this->assertSame('en', $this->request->getLocale());
+    }
+
+    public function testGetCookie(): void
+    {
+        $this->assertNull($this->request->getCookie('TESTY'));
+
+        $this->assertSame([], $this->request->getCookie());
+    }
+
+    public function testIs(): void
+    {
+        $this->assertFalse($this->request->is('get'));
+    }
+
+    public function testParseCommandWithMissingArgv(): void
+    {
+        Services::injectMock('superglobals', new Superglobals([], [], [], [], []));
+
+        $request = new CLIRequest(new App());
+
+        $this->assertSame('', $request->getPath());
+        $this->assertSame([], $request->getSegments());
+        $this->assertSame('', $request->getOptionString());
     }
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,6 +15,9 @@ namespace Tests\Support\Entity\Cast;
 
 use CodeIgniter\Entity\Cast\BaseCast;
 
+/**
+ * @extends BaseCast<mixed, string>
+ */
 class CastPassParameters extends BaseCast
 {
     /**
@@ -20,10 +25,8 @@ class CastPassParameters extends BaseCast
      *
      * @param mixed $value  Data
      * @param array $params Additional param
-     *
-     * @return mixed
      */
-    public static function set($value, array $params = [])
+    public static function set($value, array $params = []): string
     {
         return $value . ':' . json_encode($params);
     }

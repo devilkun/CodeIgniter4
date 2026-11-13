@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -9,27 +11,29 @@
  * the LICENSE file that was distributed with this source code.
  */
 
-use CodeIgniter\Publisher\Publisher;
+namespace CodeIgniter\Publisher;
+
+use CodeIgniter\HTTP\CURLRequest;
+use CodeIgniter\HTTP\ResponseInterface;
 use CodeIgniter\Test\CIUnitTestCase;
+use Config\Services;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class PublisherInputTest extends CIUnitTestCase
 {
     /**
      * A known, valid file
-     *
-     * @var string
      */
-    private $file = SUPPORTPATH . 'Files/baker/banana.php';
+    private string $file = SUPPORTPATH . 'Files/baker/banana.php';
 
     /**
      * A known, valid directory
-     *
-     * @var string
      */
-    private $directory = SUPPORTPATH . 'Files/able/';
+    private string $directory = SUPPORTPATH . 'Files/able/';
 
     /**
      * Initialize the helper, since some
@@ -43,7 +47,7 @@ final class PublisherInputTest extends CIUnitTestCase
         helper(['filesystem']);
     }
 
-    public function testAddPathFile()
+    public function testAddPathFile(): void
     {
         $publisher = new Publisher(SUPPORTPATH . 'Files');
 
@@ -52,7 +56,7 @@ final class PublisherInputTest extends CIUnitTestCase
         $this->assertSame([$this->file], $publisher->get());
     }
 
-    public function testAddPathFileRecursiveDoesNothing()
+    public function testAddPathFileRecursiveDoesNothing(): void
     {
         $publisher = new Publisher(SUPPORTPATH . 'Files');
 
@@ -61,7 +65,7 @@ final class PublisherInputTest extends CIUnitTestCase
         $this->assertSame([$this->file], $publisher->get());
     }
 
-    public function testAddPathDirectory()
+    public function testAddPathDirectory(): void
     {
         $publisher = new Publisher(SUPPORTPATH . 'Files');
 
@@ -76,7 +80,7 @@ final class PublisherInputTest extends CIUnitTestCase
         $this->assertSame($expected, $publisher->get());
     }
 
-    public function testAddPathDirectoryRecursive()
+    public function testAddPathDirectoryRecursive(): void
     {
         $publisher = new Publisher(SUPPORTPATH);
 
@@ -85,6 +89,7 @@ final class PublisherInputTest extends CIUnitTestCase
             $this->directory . 'fig_3.php',
             $this->directory . 'prune_ripe.php',
             SUPPORTPATH . 'Files/baker/banana.php',
+            SUPPORTPATH . 'Files/baker/fig_3.php.txt',
         ];
 
         $publisher->addPath('Files');
@@ -92,7 +97,7 @@ final class PublisherInputTest extends CIUnitTestCase
         $this->assertSame($expected, $publisher->get());
     }
 
-    public function testAddPaths()
+    public function testAddPaths(): void
     {
         $publisher = new Publisher(SUPPORTPATH . 'Files');
 
@@ -111,7 +116,7 @@ final class PublisherInputTest extends CIUnitTestCase
         $this->assertSame($expected, $publisher->get());
     }
 
-    public function testAddPathsRecursive()
+    public function testAddPathsRecursive(): void
     {
         $publisher = new Publisher(SUPPORTPATH);
 
@@ -120,6 +125,7 @@ final class PublisherInputTest extends CIUnitTestCase
             $this->directory . 'fig_3.php',
             $this->directory . 'prune_ripe.php',
             SUPPORTPATH . 'Files/baker/banana.php',
+            SUPPORTPATH . 'Files/baker/fig_3.php.txt',
             SUPPORTPATH . 'Log/Handlers/TestHandler.php',
         ];
 
@@ -131,18 +137,39 @@ final class PublisherInputTest extends CIUnitTestCase
         $this->assertSame($expected, $publisher->get());
     }
 
-    public function testAddUri()
+    public function testAddUri(): void
     {
+        $mockCurl = $this->getMockBuilder(CURLRequest::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['get'])
+            ->getMock();
+        $mockResponse = $this->createStub(ResponseInterface::class);
+
+        $mockResponse->method('getBody')->willReturn('');
+        $mockCurl->method('get')->willReturn($mockResponse);
+        Services::injectMock('curlrequest', $mockCurl);
+
         $publisher = new Publisher();
         $publisher->addUri('https://raw.githubusercontent.com/codeigniter4/CodeIgniter4/develop/composer.json');
 
         $scratch = $this->getPrivateProperty($publisher, 'scratch');
 
         $this->assertSame([$scratch . 'composer.json'], $publisher->get());
+        Services::resetSingle('curlrequest');
     }
 
-    public function testAddUris()
+    public function testAddUris(): void
     {
+        $mockCurl = $this->getMockBuilder(CURLRequest::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['get'])
+            ->getMock();
+        $mockResponse = $this->createStub(ResponseInterface::class);
+
+        $mockResponse->method('getBody')->willReturn('');
+        $mockCurl->method('get')->willReturn($mockResponse);
+        Services::injectMock('curlrequest', $mockCurl);
+
         $publisher = new Publisher();
         $publisher->addUris([
             'https://raw.githubusercontent.com/codeigniter4/CodeIgniter4/develop/LICENSE',
@@ -152,5 +179,6 @@ final class PublisherInputTest extends CIUnitTestCase
         $scratch = $this->getPrivateProperty($publisher, 'scratch');
 
         $this->assertSame([$scratch . 'LICENSE', $scratch . 'composer.json'], $publisher->get());
+        Services::resetSingle('curlrequest');
     }
 }

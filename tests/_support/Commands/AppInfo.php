@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,30 +16,42 @@ namespace Tests\Support\Commands;
 use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
 use CodeIgniter\CodeIgniter;
+use CodeIgniter\Exceptions\RuntimeException;
 
-class AppInfo extends BaseCommand
+/**
+ * @internal
+ */
+final class AppInfo extends BaseCommand
 {
     protected $group       = 'demo';
     protected $name        = 'app:info';
     protected $arguments   = ['draft' => 'unused'];
     protected $description = 'Displays basic application information.';
 
-    public function run(array $params)
+    public function run(array $params): int
     {
-        CLI::write('CI Version: ' . CLI::color(CodeIgniter::CI_VERSION, 'red'));
+        CLI::write(sprintf('CodeIgniter Version: %s', CodeIgniter::CI_VERSION));
+
+        return 0;
     }
 
-    public function bomb()
+    public function bomb(): int
     {
         try {
             CLI::color('test', 'white', 'Background');
-        } catch (\RuntimeException $oops) {
-            $this->showError($oops);
+        } catch (RuntimeException $e) {
+            $this->showError($e);
+
+            return 1;
         }
+
+        return 0;
     }
 
-    public function helpme()
+    public function helpMe(): int
     {
         $this->call('help');
+
+        return 0;
     }
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,11 +15,13 @@ namespace CodeIgniter\Log\Handlers;
 
 use CodeIgniter\Log\Exceptions\LogException;
 use CodeIgniter\Test\CIUnitTestCase;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\MockObject\MockObject;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class ErrorlogHandlerTest extends CIUnitTestCase
 {
     public function testHandlerThrowsOnInvalidMessageType(): void
@@ -35,7 +39,9 @@ final class ErrorlogHandlerTest extends CIUnitTestCase
     }
 
     /**
-     * @return MockObject&ErrorlogHandler
+     * @param array{handles?: list<string>, messageType?: int} $config
+     *
+     * @return ErrorlogHandler&MockObject
      */
     private function getMockedHandler(array $config = [])
     {

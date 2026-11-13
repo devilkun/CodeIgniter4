@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,30 +14,47 @@
 namespace CodeIgniter\Filters;
 
 use CodeIgniter\Config\Services;
+use CodeIgniter\HTTP\CLIRequest;
+use CodeIgniter\HTTP\IncomingRequest;
+use CodeIgniter\HTTP\RequestInterface;
+use CodeIgniter\HTTP\Response;
+use CodeIgniter\HTTP\ResponseInterface;
+use CodeIgniter\Superglobals;
 use CodeIgniter\Test\CIUnitTestCase;
 use Config\Filters as FilterConfig;
+use PHPUnit\Framework\Attributes\BackupGlobals;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
- * @backupGlobals enabled
- *
  * @internal
  */
+#[BackupGlobals(true)]
+#[Group('Others')]
 final class DebugToolbarTest extends CIUnitTestCase
 {
-    protected $request;
-    protected $response;
+    /**
+     * @var CLIRequest|IncomingRequest
+     */
+    private RequestInterface $request;
+
+    private Response $response;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->request  = Services::request();
-        $this->response = Services::response();
+        Services::injectMock('superglobals', new Superglobals());
+
+        $this->request = service('request');
+
+        $response = service('response');
+        $this->assertInstanceOf(Response::class, $response);
+        $this->response = $response;
     }
 
-    public function testDebugToolbarFilter()
+    public function testDebugToolbarFilter(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config          = new FilterConfig();
         $config->globals = [
@@ -49,11 +68,13 @@ final class DebugToolbarTest extends CIUnitTestCase
         $expectedAfter  = $this->response;
 
         // nothing should change here, since we have no before logic
-        $filter->before($this->request);
+        $result = $filter->before($this->request);
         $this->assertSame($expectedBefore, $this->request);
+        $this->assertNull($result);
 
         // nothing should change here, since we are running in the CLI
-        $filter->after($this->request, $this->response);
+        $result = $filter->after($this->request, $this->response);
         $this->assertSame($expectedAfter, $this->response);
+        $this->assertNotInstanceOf(ResponseInterface::class, $result);
     }
 }

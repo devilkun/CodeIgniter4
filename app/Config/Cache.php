@@ -2,6 +2,8 @@
 
 namespace Config;
 
+use CodeIgniter\Cache\CacheInterface;
+use CodeIgniter\Cache\Handlers\ApcuHandler;
 use CodeIgniter\Cache\Handlers\DummyHandler;
 use CodeIgniter\Cache\Handlers\FileHandler;
 use CodeIgniter\Cache\Handlers\MemcachedHandler;
@@ -19,10 +21,8 @@ class Cache extends BaseConfig
      *
      * The name of the preferred handler that should be used. If for some reason
      * it is not available, the $backupHandler will be used in its place.
-     *
-     * @var string
      */
-    public $handler = 'file';
+    public string $handler = 'file';
 
     /**
      * --------------------------------------------------------------------------
@@ -32,43 +32,8 @@ class Cache extends BaseConfig
      * The name of the handler that will be used in case the first one is
      * unreachable. Often, 'file' is used here since the filesystem is
      * always available, though that's not always practical for the app.
-     *
-     * @var string
      */
-    public $backupHandler = 'dummy';
-
-    /**
-     * --------------------------------------------------------------------------
-     * Cache Directory Path
-     * --------------------------------------------------------------------------
-     *
-     * The path to where cache files should be stored, if using a file-based
-     * system.
-     *
-     * @var string
-     *
-     * @deprecated Use the driver-specific variant under $file
-     */
-    public $storePath = WRITEPATH . 'cache/';
-
-    /**
-     * --------------------------------------------------------------------------
-     * Cache Include Query String
-     * --------------------------------------------------------------------------
-     *
-     * Whether to take the URL query string into consideration when generating
-     * output cache files. Valid options are:
-     *
-     *    false      = Disabled
-     *    true       = Enabled, take all query parameters into account.
-     *                 Please be aware that this may result in numerous cache
-     *                 files generated for the same page over and over again.
-     *    array('q') = Enabled, but only take into account the specified list
-     *                 of query parameters.
-     *
-     * @var bool|string[]
-     */
-    public $cacheQueryString = false;
+    public string $backupHandler = 'dummy';
 
     /**
      * --------------------------------------------------------------------------
@@ -77,10 +42,8 @@ class Cache extends BaseConfig
      *
      * This string is added to all cache item names to help avoid collisions
      * if you run multiple applications with the same cache engine.
-     *
-     * @var string
      */
-    public $prefix = '';
+    public string $prefix = '';
 
     /**
      * --------------------------------------------------------------------------
@@ -92,10 +55,8 @@ class Cache extends BaseConfig
      * WARNING: This is not used by framework handlers where 60 seconds is
      * hard-coded, but may be useful to projects and modules. This will replace
      * the hard-coded value in a future release.
-     *
-     * @var int
      */
-    public $ttl = 60;
+    public int $ttl = 60;
 
     /**
      * --------------------------------------------------------------------------
@@ -105,22 +66,22 @@ class Cache extends BaseConfig
      * A string of reserved characters that will not be allowed in keys or tags.
      * Strings that violate this restriction will cause handlers to throw.
      * Default: {}()/\@:
-     * Note: The default set is required for PSR-6 compliance.
      *
-     * @var string
+     * NOTE: The default set is required for PSR-6 compliance.
      */
-    public $reservedCharacters = '{}()/\@:';
+    public string $reservedCharacters = '{}()/\@:';
 
     /**
      * --------------------------------------------------------------------------
      * File settings
      * --------------------------------------------------------------------------
+     *
      * Your file storage preferences can be specified below, if you are using
      * the File driver.
      *
-     * @var array<string, int|string|null>
+     * @var array{storePath?: string, mode?: int}
      */
-    public $file = [
+    public array $file = [
         'storePath' => WRITEPATH . 'cache/',
         'mode'      => 0640,
     ];
@@ -129,14 +90,15 @@ class Cache extends BaseConfig
      * -------------------------------------------------------------------------
      * Memcached settings
      * -------------------------------------------------------------------------
+     *
      * Your Memcached servers can be specified below, if you are using
      * the Memcached drivers.
      *
      * @see https://codeigniter.com/user_guide/libraries/caching.html#memcached
      *
-     * @var array<string, boolean|int|string>
+     * @var array{host?: string, port?: int, weight?: int, raw?: bool}
      */
-    public $memcached = [
+    public array $memcached = [
         'host'   => '127.0.0.1',
         'port'   => 11211,
         'weight' => 1,
@@ -147,17 +109,28 @@ class Cache extends BaseConfig
      * -------------------------------------------------------------------------
      * Redis settings
      * -------------------------------------------------------------------------
+     *
      * Your Redis server can be specified below, if you are using
      * the Redis or Predis drivers.
      *
-     * @var array<string, int|string|null>
+     * @var array{
+     *     host?: string,
+     *     password?: string|null,
+     *     port?: int,
+     *     timeout?: int,
+     *     async?: bool,
+     *     persistent?: bool,
+     *     database?: int
+     * }
      */
-    public $redis = [
-        'host'     => '127.0.0.1',
-        'password' => null,
-        'port'     => 6379,
-        'timeout'  => 0,
-        'database' => 0,
+    public array $redis = [
+        'host'       => '127.0.0.1',
+        'password'   => null,
+        'port'       => 6379,
+        'timeout'    => 0,
+        'async'      => false, // specific to Predis and ignored by the native Redis extension
+        'persistent' => false,
+        'database'   => 0,
     ];
 
     /**
@@ -168,9 +141,10 @@ class Cache extends BaseConfig
      * This is an array of cache engine alias' and class names. Only engines
      * that are listed here are allowed to be used.
      *
-     * @var array<string, string>
+     * @var array<string, class-string<CacheInterface>>
      */
-    public $validHandlers = [
+    public array $validHandlers = [
+        'apcu'      => ApcuHandler::class,
         'dummy'     => DummyHandler::class,
         'file'      => FileHandler::class,
         'memcached' => MemcachedHandler::class,
@@ -178,4 +152,47 @@ class Cache extends BaseConfig
         'redis'     => RedisHandler::class,
         'wincache'  => WincacheHandler::class,
     ];
+
+    /**
+     * --------------------------------------------------------------------------
+     * Web Page Caching: Cache Include Query String
+     * --------------------------------------------------------------------------
+     *
+     * Whether to take the URL query string into consideration when generating
+     * output cache files. Valid options are:
+     *
+     *    false = Disabled
+     *    true  = Enabled, take all query parameters into account.
+     *            Please be aware that this may result in numerous cache
+     *            files generated for the same page over and over again.
+     *    ['q'] = Enabled, but only take into account the specified list
+     *            of query parameters.
+     *
+     * @var bool|list<string>
+     */
+    public $cacheQueryString = false;
+
+    /**
+     * --------------------------------------------------------------------------
+     * Web Page Caching: Cache Status Codes
+     * --------------------------------------------------------------------------
+     *
+     * HTTP status codes that are allowed to be cached. Only responses with
+     * these status codes will be cached by the PageCache filter.
+     *
+     * Default: [] - Cache all status codes (backward compatible)
+     *
+     * Recommended: [200] - Only cache successful responses
+     *
+     * You can also use status codes like:
+     *   [200, 404, 410] - Cache successful responses and specific error codes
+     *   [200, 201, 202, 203, 204] - All 2xx successful responses
+     *
+     * WARNING: Using [] may cache temporary error pages (404, 500, etc).
+     * Consider restricting to [200] for production applications to avoid
+     * caching errors that should be temporary.
+     *
+     * @var list<int>
+     */
+    public array $cacheStatusCodes = [];
 }

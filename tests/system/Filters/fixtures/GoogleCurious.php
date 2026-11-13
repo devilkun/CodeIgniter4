@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -24,5 +26,6 @@ class GoogleCurious implements FilterInterface
 
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)
     {
+        return null;
     }
 }

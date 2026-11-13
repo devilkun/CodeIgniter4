@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,106 +13,91 @@
 
 namespace CodeIgniter\Test;
 
+use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\Test\TestForReflectionHelper;
+
 /**
  * @internal
  */
+#[Group('Others')]
 final class ReflectionHelperTest extends CIUnitTestCase
 {
-    public function testGetPrivatePropertyWithObject()
+    protected function setUp(): void
     {
-        $obj    = new __TestForReflectionHelper();
+        parent::setUp();
+
+        TestForReflectionHelper::resetStaticPrivate();
+    }
+
+    public function testGetPrivatePropertyWithObject(): void
+    {
+        $obj    = new TestForReflectionHelper();
         $actual = $this->getPrivateProperty($obj, 'private');
         $this->assertSame('secret', $actual);
     }
 
-    public function testGetPrivatePropertyWithObjectStaticCall()
+    public function testGetPrivatePropertyWithObjectStaticCall(): void
     {
-        $obj    = new __TestForReflectionHelper();
+        $obj    = new TestForReflectionHelper();
         $actual = CIUnitTestCase::getPrivateProperty($obj, 'private');
         $this->assertSame('secret', $actual);
     }
 
-    public function testGetPrivatePropertyWithStatic()
+    public function testGetPrivatePropertyWithStatic(): void
     {
         $actual = $this->getPrivateProperty(
-            __TestForReflectionHelper::class,
-            'static_private'
+            TestForReflectionHelper::class,
+            'static_private',
         );
         $this->assertSame('xyz', $actual);
     }
 
-    public function testSetPrivatePropertyWithObject()
+    public function testSetPrivatePropertyWithObject(): void
     {
-        $obj = new __TestForReflectionHelper();
+        $obj = new TestForReflectionHelper();
         $this->setPrivateProperty(
             $obj,
             'private',
-            'open'
+            'open',
         );
         $this->assertSame('open', $obj->getPrivate());
     }
 
-    public function testSetPrivatePropertyWithStatic()
+    public function testSetPrivatePropertyWithStatic(): void
     {
         $this->setPrivateProperty(
-            __TestForReflectionHelper::class,
+            TestForReflectionHelper::class,
             'static_private',
-            'abc'
+            'abc',
         );
         $this->assertSame(
             'abc',
-            __TestForReflectionHelper::getStaticPrivate()
+            TestForReflectionHelper::getStaticPrivate(),
         );
     }
 
-    public function testGetPrivateMethodInvokerWithObject()
+    public function testGetPrivateMethodInvokerWithObject(): void
     {
-        $obj    = new __TestForReflectionHelper();
-        $method = $this->getPrivateMethodInvoker(
+        $obj    = new TestForReflectionHelper();
+        $method = self::getPrivateMethodInvoker(
             $obj,
-            'privateMethod'
+            'privateMethod',
         );
         $this->assertSame(
             'private param1param2',
-            $method('param1', 'param2')
+            $method('param1', 'param2'),
         );
     }
 
-    public function testGetPrivateMethodInvokerWithStatic()
+    public function testGetPrivateMethodInvokerWithStatic(): void
     {
-        $method = $this->getPrivateMethodInvoker(
-            __TestForReflectionHelper::class,
-            'privateStaticMethod'
+        $method = self::getPrivateMethodInvoker(
+            TestForReflectionHelper::class,
+            'privateStaticMethod',
         );
         $this->assertSame(
             'private_static param1param2',
-            $method('param1', 'param2')
+            $method('param1', 'param2'),
         );
-    }
-}
-
-class __TestForReflectionHelper
-{
-    private $private               = 'secret';
-    private static $static_private = 'xyz';
-
-    public function getPrivate()
-    {
-        return $this->private;
-    }
-
-    public static function getStaticPrivate()
-    {
-        return self::$static_private;
-    }
-
-    private function privateMethod($param1, $param2)
-    {
-        return 'private ' . $param1 . $param2;
-    }
-
-    private static function privateStaticMethod($param1, $param2)
-    {
-        return 'private_static ' . $param1 . $param2;
     }
 }

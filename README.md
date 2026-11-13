@@ -1,6 +1,8 @@
 # CodeIgniter 4 Development
 
-[![Build Status](https://github.com/codeigniter4/CodeIgniter4/workflows/PHPUnit/badge.svg)](https://github.com/codeigniter4/CodeIgniter4/actions?query=workflow%3A%22PHPUnit%22)
+[![PHPUnit](https://github.com/codeigniter4/CodeIgniter4/actions/workflows/test-phpunit.yml/badge.svg)](https://github.com/codeigniter4/CodeIgniter4/actions/workflows/test-phpunit.yml)
+[![PHPStan](https://github.com/codeigniter4/CodeIgniter4/actions/workflows/test-phpstan.yml/badge.svg)](https://github.com/codeigniter4/CodeIgniter4/actions/workflows/test-phpstan.yml)
+[![Psalm](https://github.com/codeigniter4/CodeIgniter4/actions/workflows/test-psalm.yml/badge.svg)](https://github.com/codeigniter4/CodeIgniter4/actions/workflows/test-psalm.yml)
 [![Coverage Status](https://coveralls.io/repos/github/codeigniter4/CodeIgniter4/badge.svg?branch=develop)](https://coveralls.io/github/codeigniter4/CodeIgniter4?branch=develop)
 [![Downloads](https://poser.pugx.org/codeigniter4/framework/downloads)](https://packagist.org/packages/codeigniter4/framework)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/codeigniter4/CodeIgniter4)](https://packagist.org/packages/codeigniter4/framework)
@@ -12,26 +14,26 @@
 ## What is CodeIgniter?
 
 CodeIgniter is a PHP full-stack web framework that is light, fast, flexible and secure.
-More information can be found at the [official site](http://codeigniter.com).
+More information can be found at the [official site](https://codeigniter.com).
 
 This repository holds the source code for CodeIgniter 4 only.
 Version 4 is a complete rewrite to bring the quality and the code into a more modern version,
 while still keeping as many of the things intact that has made people love the framework over the years.
 
-More information about the plans for version 4 can be found in [the announcement](http://forum.codeigniter.com/thread-62615.html) on the forums.
+More information about the plans for version 4 can be found in [CodeIgniter 4](https://forum.codeigniter.com/forumdisplay.php?fid=28) on the forums.
 
 ### Documentation
 
-The [User Guide](https://codeigniter4.github.io/userguide/) is the primary documentation for CodeIgniter 4.
+The [User Guide](https://codeigniter.com/user_guide/) is the primary documentation for CodeIgniter 4.
 
-The current **in-progress** User Guide can be found [here](https://codeigniter4.github.io/CodeIgniter4/).
+You will also find the [current **in-progress** User Guide](https://codeigniter4.github.io/CodeIgniter4/develop/).
 As with the rest of the framework, it is a work in progress, and will see changes over time to structure, explanations, etc.
 
 You might also be interested in the [API documentation](https://codeigniter4.github.io/api/) for the framework components.
 
 ## Important Change with index.php
 
-index.php is no longer in the root of the project! It has been moved inside the *public* folder,
+`index.php` is no longer in the root of the project! It has been moved inside the *public* folder,
 for better security and separation of components.
 
 This means that you should configure your web server to "point" to your project's *public* folder, and
@@ -46,15 +48,16 @@ CodeIgniter is developed completely on a volunteer basis. As such, please give u
 for your issues to be reviewed. If you haven't heard from one of the team in that time period,
 feel free to leave a comment on the issue so that it gets brought back to our attention.
 
-We use Github issues to track **BUGS** and to track approved **DEVELOPMENT** work packages.
-We use our [forum](http://forum.codeigniter.com) to provide SUPPORT and to discuss
-FEATURE REQUESTS.
+> [!IMPORTANT]
+> We use GitHub issues to track **BUGS** and to track approved **DEVELOPMENT** work packages.
+> We use our [forum](http://forum.codeigniter.com) to provide SUPPORT and to discuss
+> FEATURE REQUESTS.
 
 If you raise an issue here that pertains to support or a feature request, it will
 be closed! If you are not sure if you have found a bug, raise a thread on the forum first -
 someone else may have encountered the same thing.
 
-Before raising a new Github issue, please check that your bug hasn't already
+Before raising a new GitHub issue, please check that your bug hasn't already
 been reported or fixed.
 
 We use pull requests (PRs) for CONTRIBUTIONS to the repository.
@@ -69,30 +72,38 @@ to optional packages, with their own repository.
 
 ## Contributing
 
-We **are** accepting contributions from the community!
+We **are** accepting contributions from the community! It doesn't matter whether you can code, write documentation, or help find bugs,
+all contributions are welcome.
 
-We will try to manage the process somewhat, by adding a ["help wanted" label](https://github.com/codeigniter4/CodeIgniter4/labels/help%20wanted) to those that we are
-specifically interested in at any point in time. Join the discussion for those issues and let us know
-if you want to take the lead on one of them.
+Please read the [*Contributing to CodeIgniter*](https://github.com/codeigniter4/CodeIgniter4/blob/develop/contributing/README.md).
 
-At this time, we are not looking for out-of-scope contributions, only those that would be considered part of our controlled evolution!
+CodeIgniter has had thousands on contributions from people since its creation. This project would not be what it is without them.
 
-Please read the [*Contributing to CodeIgniter*](https://github.com/codeigniter4/CodeIgniter4/blob/develop/CONTRIBUTING.md) section in the user guide.
+<a href="https://github.com/codeigniter4/CodeIgniter4/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=codeigniter4/CodeIgniter4" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
 
 ## Server Requirements
 
-PHP version 7.3 or higher is required, with the following extensions installed:
-
+PHP version 8.2 or higher is required, with the following extensions installed:
 
 - [intl](http://php.net/manual/en/intl.requirements.php)
-- [libcurl](http://php.net/manual/en/curl.requirements.php) if you plan to use the HTTP\CURLRequest library
 - [mbstring](http://php.net/manual/en/mbstring.installation.php)
+
+> [!WARNING]
+> - The end of life date for PHP 7.4 was November 28, 2022.
+> - The end of life date for PHP 8.0 was November 26, 2023.
+> - The end of life date for PHP 8.1 was December 31, 2025.
+> - If you are still using a PHP version below 8.2, you should upgrade immediately.
+> - The end of life date for PHP 8.2 will be December 31, 2026.
 
 Additionally, make sure that the following extensions are enabled in your PHP:
 
 - json (enabled by default - don't turn it off)
-- xml (enabled by default - don't turn it off)
-- [mysqlnd](http://php.net/manual/en/mysqlnd.install.php)
+- [mysqlnd](http://php.net/manual/en/mysqlnd.install.php) if you plan to use MySQL
+- [libcurl](http://php.net/manual/en/curl.requirements.php) if you plan to use the HTTP\CURLRequest library
 
 ## Running CodeIgniter Tests
 

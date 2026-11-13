@@ -1,0 +1,207 @@
+# When a new release is created, deploy relevant
+# files to each of the generated repos.
+name: Deploy Distributable Repos
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  check-version:
+    name: Check for updated version
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # fetch all tags
+          persist-credentials: false
+
+      - name: Get latest version
+        id: version
+        run: |
+          echo 'LATEST_VERSION<<EOF' >> $GITHUB_OUTPUT
+          echo $(git describe --tags --abbrev=0) | sed "s/v//" >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
+
+      - name: Search for updated version
+        if: ${{ steps.version.outputs.LATEST_VERSION }}
+        run: |
+          chmod +x ${GITHUB_WORKSPACE}/.github/scripts/validate-version
+          ${GITHUB_WORKSPACE}/.github/scripts/validate-version ${{ steps.version.outputs.LATEST_VERSION }}
+
+  framework:
+    name: Deploy to framework
+    permissions:
+      # Allow actions/github-script to create release
+      contents: write
+    if: github.repository == 'codeigniter4/CodeIgniter4'
+    runs-on: ubuntu-24.04
+    needs: check-version
+
+    steps:
+      - name: Identify
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "${GITHUB_ACTOR}"
+
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          persist-credentials: false
+
+      - name: Checkout target
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: codeigniter4/framework
+          token: ${{ secrets.ACCESS_TOKEN }}
+          path: framework
+          persist-credentials: false
+
+      - name: Chmod
+        run: chmod +x ./source/.github/scripts/deploy-framework
+
+      - name: Deploy
+        env:
+          PUSH_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+        run: ./source/.github/scripts/deploy-framework ${GITHUB_WORKSPACE}/source ${GITHUB_WORKSPACE}/framework ${GITHUB_REF##*/}
+
+      - name: Release
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{secrets.ACCESS_TOKEN}}
+          script: |
+            const release = await github.rest.repos.getLatestRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            })
+            github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: 'framework',
+              tag_name: release.data.tag_name,
+              name: release.data.name,
+              body: release.data.body
+            })
+
+  appstarter:
+    name: Deploy to appstarter
+    permissions:
+      # Allow actions/github-script to create release
+      contents: write
+    if: github.repository == 'codeigniter4/CodeIgniter4'
+    runs-on: ubuntu-24.04
+    needs: check-version
+
+    steps:
+      - name: Identify
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "${GITHUB_ACTOR}"
+
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          persist-credentials: false
+
+      - name: Checkout target
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: codeigniter4/appstarter
+          token: ${{ secrets.ACCESS_TOKEN }}
+          path: appstarter
+          persist-credentials: false
+
+      - name: Chmod
+        run: chmod +x ./source/.github/scripts/deploy-appstarter
+
+      - name: Deploy
+        env:
+          PUSH_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+        run: ./source/.github/scripts/deploy-appstarter ${GITHUB_WORKSPACE}/source ${GITHUB_WORKSPACE}/appstarter ${GITHUB_REF##*/}
+
+      - name: Release
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{secrets.ACCESS_TOKEN}}
+          script: |
+            const release = await github.rest.repos.getLatestRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            })
+            github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: 'appstarter',
+              tag_name: release.data.tag_name,
+              name: release.data.name,
+              body: release.data.body
+            })
+
+  userguide:
+    name: Deploy to userguide
+    permissions:
+      # Allow actions/github-script to create release
+      contents: write
+    if: github.repository == 'codeigniter4/CodeIgniter4'
+    runs-on: ubuntu-24.04
+    needs: check-version
+
+    steps:
+      - name: Identify
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "${GITHUB_ACTOR}"
+
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          persist-credentials: false
+
+      - name: Checkout target
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: codeigniter4/userguide
+          token: ${{ secrets.ACCESS_TOKEN }}
+          path: userguide
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Install MkDocs
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ./source/docs/requirements.txt
+
+      - name: Chmod
+        run: chmod +x ./source/.github/scripts/deploy-userguide
+
+      - name: Deploy
+        env:
+          PUSH_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+        run: ./source/.github/scripts/deploy-userguide ${GITHUB_WORKSPACE}/source ${GITHUB_WORKSPACE}/userguide ${GITHUB_REF##*/}
+
+      - name: Release
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{secrets.ACCESS_TOKEN}}
+          script: |
+            const release = await github.rest.repos.getLatestRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            })
+            github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: 'userguide',
+              tag_name: release.data.tag_name,
+              name: release.data.name,
+              body: release.data.body
+            })

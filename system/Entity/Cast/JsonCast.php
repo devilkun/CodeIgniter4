@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -16,13 +18,10 @@ use JsonException;
 use stdClass;
 
 /**
- * Class JsonCast
+ * @extends BaseCast<mixed, string>
  */
 class JsonCast extends BaseCast
 {
-    /**
-     * {@inheritDoc}
-     */
     public static function get($value, array $params = [])
     {
         $associative = in_array('array', $params, true);
@@ -47,9 +46,6 @@ class JsonCast extends BaseCast
         return $tmp;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     public static function set($value, array $params = []): string
     {
         if (function_exists('json_encode')) {

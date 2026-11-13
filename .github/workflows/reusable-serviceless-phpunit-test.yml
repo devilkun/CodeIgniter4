@@ -1,0 +1,135 @@
+# Reusable workflow for PHPUnit testing
+# without Docker services and databases
+name: Reusable Serviceless PHPUnit Test
+
+on:
+  workflow_call:
+    inputs:
+      job-name:
+        description: Name of the job to appear in GitHub UI
+        type: string
+        required: true
+      php-version:
+        description: The PHP version the workflow should run
+        type: string
+        required: true
+      job-id:
+        description: Job ID to be used as part of cache key and artifact name
+        type: string
+        required: false
+      group-name:
+        description: The @group to test
+        type: string
+        required: false
+      enable-artifact-upload:
+        description: Whether artifact uploading of coverage results should be enabled
+        type: boolean
+        required: false
+      enable-coverage:
+        description: Whether coverage should be enabled
+        type: boolean
+        required: false
+      enable-profiling:
+        description: Whether slow tests should be profiled
+        type: boolean
+        required: false
+      extra-extensions:
+        description: Additional PHP extensions that are needed to be enabled
+        type: string
+        required: false
+      extra-ini-options:
+        description: Additional PHP configuration directives that should be appended to the php.ini
+        type: string
+        required: false
+      extra-composer-options:
+        description: Additional Composer options that should be appended to the `composer update` call
+        type: string
+        required: false
+      extra-phpunit-options:
+        description: Additional PHPUnit options that should be appended to the `vendor/bin/phpunit` call
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: ${{ inputs.job-name }}
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Install latest ImageMagick
+        if: ${{ contains(inputs.extra-extensions, 'imagick') }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick libmagickwand-dev ghostscript poppler-data libjbig2dec0:amd64 libopenjp2-7:amd64
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer
+          extensions: gd, ${{ inputs.extra-extensions }}
+          ini-values: ${{ inputs.extra-ini-options }}
+          coverage: ${{ env.COVERAGE_DRIVER }}
+        env:
+          COVERAGE_DRIVER: ${{ inputs.enable-coverage && 'xdebug' || 'none' }}
+
+      - name: Setup global environment variables
+        id: setup-env
+        run: |
+          echo "COMPOSER_CACHE_FILES_DIR=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+          echo "ARTIFACT_NAME=${{ inputs.job-id || github.job }}-php-${{ inputs.php-version }}" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.setup-env.outputs.COMPOSER_CACHE_FILES_DIR }}
+          key: composer-php-${{ inputs.php-version }}-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            composer-php-${{ inputs.php-version }}-
+            composer-
+
+      - name: Cache PHPUnit's static analysis cache
+        if: ${{ inputs.enable-artifact-upload }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/.phpunit.cache/code-coverage
+          key: phpunit-code-coverage-${{ hashFiles('**/phpunit.*') }}
+          restore-keys: |
+            phpunit-code-coverage-
+
+      - name: Install dependencies
+        run: |
+          composer config --global github-oauth.github.com ${{ secrets.GITHUB_TOKEN }}
+          composer update --ansi ${{ inputs.extra-composer-options }}
+
+      - name: Compute additional PHPUnit options
+        id: phpunit-options
+        run: |
+          echo "EXTRA_PHPUNIT_OPTIONS=${{ format('{0} {1} {2}', env.GROUP_OPTION, env.COVERAGE_OPTION, inputs.extra-phpunit-options) }}" >> $GITHUB_OUTPUT
+        env:
+          COVERAGE_OPTION: ${{ inputs.enable-coverage && format('--coverage-php build/cov/coverage-{0}.cov', steps.setup-env.outputs.ARTIFACT_NAME) || '--no-coverage' }}
+          GROUP_OPTION: ${{ inputs.group-name && format('--group {0}', inputs.group-name) || '' }}
+
+      - name: Run tests
+        run: script -e -c "vendor/bin/phpunit --color=always ${{ steps.phpunit-options.outputs.EXTRA_PHPUNIT_OPTIONS }}"
+        env:
+          TACHYCARDIA_MONITOR_GA: ${{ inputs.enable-profiling && 'enabled' || '' }}
+          TERM: xterm-256color
+
+      - name: Upload coverage results as artifact
+        if: ${{ inputs.enable-artifact-upload }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.setup-env.outputs.ARTIFACT_NAME }}
+          path: build/cov/coverage-${{ steps.setup-env.outputs.ARTIFACT_NAME }}.cov
+          if-no-files-found: error
+          retention-days: 1

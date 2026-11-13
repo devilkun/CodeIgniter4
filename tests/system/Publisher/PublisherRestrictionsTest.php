@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -9,9 +11,12 @@
  * the LICENSE file that was distributed with this source code.
  */
 
+namespace CodeIgniter\Publisher;
+
 use CodeIgniter\Publisher\Exceptions\PublisherException;
-use CodeIgniter\Publisher\Publisher;
 use CodeIgniter\Test\CIUnitTestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Publisher Restrictions Test
@@ -21,17 +26,18 @@ use CodeIgniter\Test\CIUnitTestCase;
  *
  * @internal
  */
+#[Group('Others')]
 final class PublisherRestrictionsTest extends CIUnitTestCase
 {
     /**
-     * @see Tests\Support\Config\Registrars::Publisher()
+     * @see \Tests\Support\Config\Registrar::Publisher()
      */
-    public function testRegistrarsNotAllowed()
+    public function testRegistrarsNotAllowed(): void
     {
         $this->assertArrayNotHasKey(SUPPORTPATH, config('Publisher')->restrictions);
     }
 
-    public function testImmutableRestrictions()
+    public function testImmutableRestrictions(): void
     {
         $publisher = new Publisher();
 
@@ -43,10 +49,8 @@ final class PublisherRestrictionsTest extends CIUnitTestCase
         $this->assertArrayNotHasKey(SUPPORTPATH, $restrictions);
     }
 
-    /**
-     * @dataProvider fileProvider
-     */
-    public function testDefaultPublicRestrictions(string $path)
+    #[DataProvider('provideDefaultPublicRestrictions')]
+    public function testDefaultPublicRestrictions(string $path): void
     {
         $publisher = new Publisher(ROOTPATH, FCPATH);
         $pattern   = config('Publisher')->restrictions[FCPATH];
@@ -66,19 +70,20 @@ final class PublisherRestrictionsTest extends CIUnitTestCase
         $this->assertSame($expected, $errors[$file]->getMessage());
     }
 
-    public function fileProvider()
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function provideDefaultPublicRestrictions(): iterable
     {
-        yield 'php' => ['index.php'];
-
-        yield 'exe' => ['cat.exe'];
-
-        yield 'flat' => ['banana'];
+        yield from [
+            'php'  => ['index.php'],
+            'exe'  => ['cat.exe'],
+            'flat' => ['banana'],
+        ];
     }
 
-    /**
-     * @dataProvider destinationProvider
-     */
-    public function testDestinations(string $destination, bool $allowed)
+    #[DataProvider('provideDestinations')]
+    public function testDestinations(string $destination, bool $allowed): void
     {
         config('Publisher')->restrictions = [
             APPPATH                   => '',
@@ -96,7 +101,10 @@ final class PublisherRestrictionsTest extends CIUnitTestCase
         $this->assertInstanceOf(Publisher::class, $publisher);
     }
 
-    public function destinationProvider()
+    /**
+     * @return iterable<string, array{string, bool}>
+     */
+    public static function provideDestinations(): iterable
     {
         return [
             'explicit' => [

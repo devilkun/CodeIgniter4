@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,35 +15,35 @@ namespace CodeIgniter\Database\Live;
 
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
+use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\Database\Seeds\CITestSeeder;
 
 /**
- * @group DatabaseLive
- *
  * @internal
  */
+#[Group('DatabaseLive')]
 final class FromTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
     protected $refresh = true;
+    protected $seed    = CITestSeeder::class;
 
-    protected $seed = 'Tests\Support\Database\Seeds\CITestSeeder';
-
-    public function testFromCanAddTables()
+    public function testFromCanAddTables(): void
     {
         $result = $this->db->table('job')->from('misc')->get()->getResult();
 
         $this->assertCount(12, $result);
     }
 
-    public function testFromCanOverride()
+    public function testFromCanOverride(): void
     {
         $result = $this->db->table('job')->from('misc', true)->get()->getResult();
 
         $this->assertCount(3, $result);
     }
 
-    public function testFromWithWhere()
+    public function testFromWithWhere(): void
     {
         $result = $this->db->table('job')->from('user')->where('user.id', 1)->get()->getResult();
 

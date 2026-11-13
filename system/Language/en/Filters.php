@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,6 +13,6 @@
 
 // Filters language settings
 return [
-    'noFilter'           => '{0} filter must have a matching alias defined.',
-    'incorrectInterface' => '{0} must implement CodeIgniter\Filters\FilterInterface.',
+    'noFilter'           => '"{0}" filter must have a matching alias defined.',
+    'incorrectInterface' => '"{0}" must implement CodeIgniter\Filters\FilterInterface.',
 ];

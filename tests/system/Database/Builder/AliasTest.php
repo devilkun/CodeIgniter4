@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,12 +13,15 @@
 
 namespace CodeIgniter\Database\Builder;
 
+use CodeIgniter\Database\TableName;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\Mock\MockConnection;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class AliasTest extends CIUnitTestCase
 {
     protected $db;
@@ -28,7 +33,7 @@ final class AliasTest extends CIUnitTestCase
         $this->db = new MockConnection([]);
     }
 
-    public function testAlias()
+    public function testAlias(): void
     {
         $builder = $this->db->table('jobs j');
 
@@ -37,7 +42,17 @@ final class AliasTest extends CIUnitTestCase
         $this->assertSame($expectedSQL, str_replace("\n", ' ', $builder->getCompiledSelect()));
     }
 
-    public function testAliasSupportsArrayOfNames()
+    public function testTableName(): void
+    {
+        $tableName = TableName::create($this->db->DBPrefix, 'jobs', 'j');
+        $builder   = $this->db->table($tableName);
+
+        $expectedSQL = 'SELECT * FROM "jobs" "j"';
+
+        $this->assertSame($expectedSQL, str_replace("\n", ' ', $builder->getCompiledSelect()));
+    }
+
+    public function testAliasSupportsArrayOfNames(): void
     {
         $builder = $this->db->table(['jobs j', 'users u']);
 
@@ -46,7 +61,7 @@ final class AliasTest extends CIUnitTestCase
         $this->assertSame($expectedSQL, str_replace("\n", ' ', $builder->getCompiledSelect()));
     }
 
-    public function testAliasSupportsStringOfNames()
+    public function testAliasSupportsStringOfNames(): void
     {
         $builder = $this->db->table('jobs j, users u');
 
@@ -58,7 +73,7 @@ final class AliasTest extends CIUnitTestCase
     /**
      * @see https://github.com/codeigniter4/CodeIgniter4/issues/1599
      */
-    public function testAliasLeftJoinWithShortTableName()
+    public function testAliasLeftJoinWithShortTableName(): void
     {
         $this->setPrivateProperty($this->db, 'DBPrefix', 'db_');
         $builder = $this->db->table('jobs');
@@ -73,7 +88,7 @@ final class AliasTest extends CIUnitTestCase
     /**
      * @see https://github.com/codeigniter4/CodeIgniter4/issues/1599
      */
-    public function testAliasLeftJoinWithLongTableName()
+    public function testAliasLeftJoinWithLongTableName(): void
     {
         $this->setPrivateProperty($this->db, 'DBPrefix', 'db_');
         $builder = $this->db->table('jobs');
@@ -82,6 +97,22 @@ final class AliasTest extends CIUnitTestCase
 
         $expectedSQL = 'SELECT * FROM "db_jobs" LEFT JOIN "db_users" as "u" ON "db_users"."id" = "db_jobs"."id"';
 
+        $this->assertSame($expectedSQL, str_replace("\n", ' ', $builder->getCompiledSelect()));
+    }
+
+    /**
+     * @see https://github.com/codeigniter4/CodeIgniter4/issues/5360
+     */
+    public function testAliasSimpleLikeWithDBPrefix(): void
+    {
+        $this->setPrivateProperty($this->db, 'DBPrefix', 'db_');
+        $builder = $this->db->table('jobs j');
+
+        $builder->like('j.name', 'veloper');
+
+        $expectedSQL = <<<'SQL'
+            SELECT * FROM "db_jobs" "j" WHERE "j"."name" LIKE '%veloper%' ESCAPE '!'
+            SQL;
         $this->assertSame($expectedSQL, str_replace("\n", ' ', $builder->getCompiledSelect()));
     }
 }

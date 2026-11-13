@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,5 +13,5 @@
 
 // Testing language settings
 return [
-    'invalidMockClass' => '{0} is not a valid Mock class',
+    'invalidMockClass' => '"{0}" is not a valid Mock class',
 ];

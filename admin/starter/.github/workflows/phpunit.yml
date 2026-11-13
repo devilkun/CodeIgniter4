@@ -2,8 +2,11 @@ name: PHPUnit
 
 on:
   pull_request:
-    branches: 
+    branches:
       - develop
+
+permissions:
+  contents: read
 
 jobs:
   main:
@@ -11,18 +14,19 @@ jobs:
 
     strategy:
       matrix:
-        php-versions: ['7.3', '7.4']
+        php-versions: ['8.2', '8.5']
 
-    runs-on: ubuntu-latest
-
-    if: "!contains(github.event.head_commit.message, '[ci skip]')"
+    runs-on: ubuntu-24.04
+    if: (! contains(github.event.pull_request.title, '[ci skip]'))
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Setup PHP, with composer and extensions
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@44454db4f0199b8b9685a5d763dc37cbf79108e1 # 2.36.0
         with:
           php-version: ${{ matrix.php-versions }}
           tools: composer, pecl, phpunit
@@ -31,17 +35,17 @@ jobs:
 
       - name: Get composer cache directory
         id: composer-cache
-        run: echo "::set-output name=dir::$(composer config cache-files-dir)"
+        run: echo "COMPOSER_CACHE_DIR=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
 
       - name: Cache composer dependencies
-        uses: actions/cache@v2
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ${{ steps.composer-cache.outputs.dir }}
+          path: ${{ steps.composer-cache.outputs.COMPOSER_CACHE_DIR }}
           key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-
 
       - name: Install dependencies
-        run: composer install --no-progress --no-interaction --prefer-dist --optimize-autoloader
+        run: composer install --no-progress --no-interaction
         # To prevent rate limiting you may need to supply an OAuth token in Settings > Secrets
         # env:
           # https://getcomposer.org/doc/articles/troubleshooting.md#api-rate-limit-and-oauth-tokens

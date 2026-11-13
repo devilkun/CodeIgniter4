@@ -1,0 +1,18 @@
+# total 3 errors
+
+parameters:
+    ignoreErrors:
+        -
+            message: '#^PHPDoc type int of property CodeIgniter\\Exceptions\\PageNotFoundException\:\:\$code is not the same as PHPDoc type mixed of overridden property Exception\:\:\$code\.$#'
+            count: 1
+            path: ../../system/Exceptions/PageNotFoundException.php
+
+        -
+            message: '#^PHPDoc type int of property CodeIgniter\\HTTP\\Exceptions\\RedirectException\:\:\$code is not the same as PHPDoc type mixed of overridden property Exception\:\:\$code\.$#'
+            count: 1
+            path: ../../system/HTTP/Exceptions/RedirectException.php
+
+        -
+            message: '#^PHPDoc type CodeIgniter\\HTTP\\URI of property CodeIgniter\\HTTP\\IncomingRequest\:\:\$uri is not the same as PHPDoc type CodeIgniter\\HTTP\\URI\|null of overridden property CodeIgniter\\HTTP\\OutgoingRequest\:\:\$uri\.$#'
+            count: 1
+            path: ../../system/HTTP/IncomingRequest.php

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,21 +15,21 @@ namespace CodeIgniter\Database\Live;
 
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
+use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\Database\Seeds\CITestSeeder;
 
 /**
- * @group DatabaseLive
- *
  * @internal
  */
+#[Group('DatabaseLive')]
 final class GroupTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
     protected $refresh = true;
+    protected $seed    = CITestSeeder::class;
 
-    protected $seed = 'Tests\Support\Database\Seeds\CITestSeeder';
-
-    public function testGroupBy()
+    public function testGroupBy(): void
     {
         $result = $this->db->table('user')
             ->select('name')
@@ -38,32 +40,55 @@ final class GroupTest extends CIUnitTestCase
         $this->assertCount(4, $result);
     }
 
-    public function testHavingBy()
+    public function testHavingBy(): void
     {
-        $result = $this->db->table('job')
-            ->select('name')
-            ->groupBy('name')
-            ->having('SUM(id) > 2')
-            ->get()
-            ->getResultArray();
+        $isANSISQL = $this->db->DBDriver === 'OCI8';
+
+        if ($isANSISQL) {
+            $result = $this->db->table('job')
+                ->select('name')
+                ->groupBy('name')
+                ->having('SUM("id") >', 2)
+                ->get()
+                ->getResultArray();
+        } else {
+            $result = $this->db->table('job')
+                ->select('name')
+                ->groupBy('name')
+                ->having('SUM(id) >', 2)
+                ->get()
+                ->getResultArray();
+        }
 
         $this->assertCount(2, $result);
     }
 
-    public function testOrHavingBy()
+    public function testOrHavingBy(): void
     {
-        $result = $this->db->table('user')
-            ->select('id')
-            ->groupBy('id')
-            ->having('id >', 3)
-            ->orHaving('SUM(id) > 2')
-            ->get()
-            ->getResult();
+        $isANSISQL = $this->db->DBDriver === 'OCI8';
+
+        if ($isANSISQL) {
+            $result = $this->db->table('user')
+                ->select('id')
+                ->groupBy('id')
+                ->having('id >', 3)
+                ->orHaving('SUM("id") >', 2)
+                ->get()
+                ->getResult();
+        } else {
+            $result = $this->db->table('user')
+                ->select('id')
+                ->groupBy('id')
+                ->having('id >', 3)
+                ->orHaving('SUM(id) >', 2)
+                ->get()
+                ->getResult();
+        }
 
         $this->assertCount(2, $result);
     }
 
-    public function testHavingIn()
+    public function testHavingIn(): void
     {
         $result = $this->db->table('job')
             ->select('name')
@@ -78,7 +103,7 @@ final class GroupTest extends CIUnitTestCase
         $this->assertSame('Politician', $result[1]->name);
     }
 
-    public function testorHavingIn()
+    public function testorHavingIn(): void
     {
         $result = $this->db->table('job')
             ->select('name')
@@ -94,7 +119,7 @@ final class GroupTest extends CIUnitTestCase
         $this->assertSame('Politician', $result[1]->name);
     }
 
-    public function testHavingNotIn()
+    public function testHavingNotIn(): void
     {
         $result = $this->db->table('job')
             ->select('name')
@@ -109,23 +134,36 @@ final class GroupTest extends CIUnitTestCase
         $this->assertSame('Musician', $result[1]->name);
     }
 
-    public function testOrHavingNotIn()
+    public function testOrHavingNotIn(): void
     {
-        $result = $this->db->table('job')
-            ->select('name')
-            ->groupBy('name')
-            ->orderBy('name', 'asc')
-            ->having('SUM(id) > 2')
-            ->orHavingNotIn('name', ['Developer', 'Politician'])
-            ->get()
-            ->getResult();
+        $isANSISQL = $this->db->DBDriver === 'OCI8';
+
+        if ($isANSISQL) {
+            $result = $this->db->table('job')
+                ->select('name')
+                ->groupBy('name')
+                ->orderBy('name', 'asc')
+                ->having('SUM("id") >', 2)
+                ->orHavingNotIn('name', ['Developer', 'Politician'])
+                ->get()
+                ->getResult();
+        } else {
+            $result = $this->db->table('job')
+                ->select('name')
+                ->groupBy('name')
+                ->orderBy('name', 'asc')
+                ->having('SUM(id) >', 2)
+                ->orHavingNotIn('name', ['Developer', 'Politician'])
+                ->get()
+                ->getResult();
+        }
 
         $this->assertCount(2, $result);
         $this->assertSame('Accountant', $result[0]->name);
         $this->assertSame('Musician', $result[1]->name);
     }
 
-    public function testHavingLike()
+    public function testHavingLike(): void
     {
         $result = $this->db->table('job')
             ->select('name')
@@ -138,7 +176,7 @@ final class GroupTest extends CIUnitTestCase
         $this->assertSame('Developer', $result[0]->name);
     }
 
-    public function testNotHavingLike()
+    public function testNotHavingLike(): void
     {
         $result = $this->db->table('job')
             ->select('name')
@@ -153,7 +191,7 @@ final class GroupTest extends CIUnitTestCase
         $this->assertSame('Developer', $result[1]->name);
     }
 
-    public function testOrHavingLike()
+    public function testOrHavingLike(): void
     {
         $result = $this->db->table('job')
             ->select('name')
@@ -169,16 +207,29 @@ final class GroupTest extends CIUnitTestCase
         $this->assertSame('Developer', $result[1]->name);
     }
 
-    public function testOrNotHavingLike()
+    public function testOrNotHavingLike(): void
     {
-        $result = $this->db->table('job')
-            ->select('name')
-            ->groupBy('name')
-            ->orderBy('name', 'asc')
-            ->having('SUM(id) > 2')
-            ->orNotHavingLike('name', 'ian')
-            ->get()
-            ->getResult();
+        $isANSISQL = $this->db->DBDriver === 'OCI8';
+
+        if ($isANSISQL) {
+            $result = $this->db->table('job')
+                ->select('name')
+                ->groupBy('name')
+                ->orderBy('name', 'asc')
+                ->having('SUM("id") >', 2)
+                ->orNotHavingLike('name', 'ian')
+                ->get()
+                ->getResult();
+        } else {
+            $result = $this->db->table('job')
+                ->select('name')
+                ->groupBy('name')
+                ->orderBy('name', 'asc')
+                ->having('SUM(id) >', 2)
+                ->orNotHavingLike('name', 'ian')
+                ->get()
+                ->getResult();
+        }
 
         $this->assertCount(3, $result);
         $this->assertSame('Accountant', $result[0]->name);
@@ -186,74 +237,138 @@ final class GroupTest extends CIUnitTestCase
         $this->assertSame('Musician', $result[2]->name);
     }
 
-    public function testAndHavingGroupStart()
+    public function testAndHavingGroupStart(): void
     {
-        $result = $this->db->table('job')
-            ->select('name')
-            ->groupBy('name')
-            ->orderBy('name', 'asc')
-            ->having('SUM(id) > 2')
-            ->havingGroupStart()
-            ->having('SUM(id) <= 4')
-            ->havingLike('name', 'ant', 'before')
-            ->havingGroupEnd()
-            ->get()
-            ->getResult();
+        $isANSISQL = $this->db->DBDriver === 'OCI8';
+
+        if ($isANSISQL) {
+            $result = $this->db->table('job')
+                ->select('name')
+                ->groupBy('name')
+                ->orderBy('name', 'asc')
+                ->having('SUM("id") >', 2)
+                ->havingGroupStart()
+                ->having('SUM("id") <=', 4)
+                ->havingLike('name', 'ant', 'before')
+                ->havingGroupEnd()
+                ->get()
+                ->getResult();
+        } else {
+            $result = $this->db->table('job')
+                ->select('name')
+                ->groupBy('name')
+                ->orderBy('name', 'asc')
+                ->having('SUM(id) >', 2)
+                ->havingGroupStart()
+                ->having('SUM(id) <=', 4)
+                ->havingLike('name', 'ant', 'before')
+                ->havingGroupEnd()
+                ->get()
+                ->getResult();
+        }
 
         $this->assertCount(1, $result);
         $this->assertSame('Accountant', $result[0]->name);
     }
 
-    public function testOrHavingGroupStart()
+    public function testOrHavingGroupStart(): void
     {
-        $result = $this->db->table('job')
-            ->select('name')
-            ->groupBy('name')
-            ->orderBy('name', 'asc')
-            ->having('SUM(id) > 2')
-            ->orHavingGroupStart()
-            ->having('SUM(id) <= 4')
-            ->havingLike('name', 'ant', 'before')
-            ->havingGroupEnd()
-            ->get()
-            ->getResult();
+        $isANSISQL = $this->db->DBDriver === 'OCI8';
+
+        if ($isANSISQL) {
+            $result = $this->db->table('job')
+                ->select('name')
+                ->groupBy('name')
+                ->orderBy('name', 'asc')
+                ->having('SUM("id") >', 2)
+                ->orHavingGroupStart()
+                ->having('SUM("id") <=', 4)
+                ->havingLike('name', 'ant', 'before')
+                ->havingGroupEnd()
+                ->get()
+                ->getResult();
+        } else {
+            $result = $this->db->table('job')
+                ->select('name')
+                ->groupBy('name')
+                ->orderBy('name', 'asc')
+                ->having('SUM(id) >', 2)
+                ->orHavingGroupStart()
+                ->having('SUM(id) <=', 4)
+                ->havingLike('name', 'ant', 'before')
+                ->havingGroupEnd()
+                ->get()
+                ->getResult();
+        }
 
         $this->assertCount(2, $result);
         $this->assertSame('Accountant', $result[0]->name);
         $this->assertSame('Musician', $result[1]->name);
     }
 
-    public function testNotHavingGroupStart()
+    public function testNotHavingGroupStart(): void
     {
-        $result = $this->db->table('job')
-            ->select('name')
-            ->groupBy('name')
-            ->orderBy('name', 'asc')
-            ->having('SUM(id) > 2')
-            ->notHavingGroupStart()
-            ->having('SUM(id) <= 4')
-            ->havingLike('name', 'ant', 'before')
-            ->havingGroupEnd()
-            ->get()
-            ->getResult();
+        $isANSISQL = $this->db->DBDriver === 'OCI8';
+
+        if ($isANSISQL) {
+            $result = $this->db->table('job')
+                ->select('name')
+                ->groupBy('name')
+                ->orderBy('name', 'asc')
+                ->having('SUM("id") >', 2)
+                ->notHavingGroupStart()
+                ->having('SUM("id") <=', 4)
+                ->havingLike('name', 'ant', 'before')
+                ->havingGroupEnd()
+                ->get()
+                ->getResult();
+        } else {
+            $result = $this->db->table('job')
+                ->select('name')
+                ->groupBy('name')
+                ->orderBy('name', 'asc')
+                ->having('SUM(id) >', 2)
+                ->notHavingGroupStart()
+                ->having('SUM(id) <=', 4)
+                ->havingLike('name', 'ant', 'before')
+                ->havingGroupEnd()
+                ->get()
+                ->getResult();
+        }
 
         $this->assertCount(1, $result);
         $this->assertSame('Musician', $result[0]->name);
     }
 
-    public function testOrNotHavingGroupStart()
+    public function testOrNotHavingGroupStart(): void
     {
-        $result = $this->db->table('job')
-            ->select('name')
-            ->groupBy('name')
-            ->orderBy('name', 'asc')
-            ->having('SUM(id) > 2')
-            ->orNotHavingGroupStart()
-            ->having('SUM(id) < 2')
-            ->havingLike('name', 'o')
-            ->havingGroupEnd()
-            ->get()
-            ->getResult();
+        $isANSISQL = $this->db->DBDriver === 'OCI8';
+
+        if ($isANSISQL) {
+            $result = $this->db->table('job')
+                ->select('name')
+                ->groupBy('name')
+                ->orderBy('name', 'asc')
+                ->having('SUM("id") >', 2)
+                ->orNotHavingGroupStart()
+                ->having('SUM("id") <', 2)
+                ->havingLike('name', 'o')
+                ->havingGroupEnd()
+                ->get()
+                ->getResult();
+        } else {
+            $result = $this->db->table('job')
+                ->select('name')
+                ->groupBy('name')
+                ->orderBy('name', 'asc')
+                ->having('SUM(id) >', 2)
+                ->orNotHavingGroupStart()
+                ->having('SUM(id) <', 2)
+                ->havingLike('name', 'o')
+                ->havingGroupEnd()
+                ->get()
+                ->getResult();
+        }
 
         $this->assertCount(3, $result);
         $this->assertSame('Accountant', $result[0]->name);
@@ -261,7 +376,7 @@ final class GroupTest extends CIUnitTestCase
         $this->assertSame('Politician', $result[2]->name);
     }
 
-    public function testAndGroups()
+    public function testAndGroups(): void
     {
         $result = $this->db->table('user')
             ->groupStart()
@@ -276,7 +391,7 @@ final class GroupTest extends CIUnitTestCase
         $this->assertSame('Richard A Causey', $result[0]->name);
     }
 
-    public function testOrGroups()
+    public function testOrGroups(): void
     {
         $result = $this->db->table('user')
             ->where('country', 'Iran')
@@ -292,7 +407,7 @@ final class GroupTest extends CIUnitTestCase
         $this->assertSame('Chris Martin', $result[1]->name);
     }
 
-    public function testNotGroups()
+    public function testNotGroups(): void
     {
         $result = $this->db->table('user')
             ->where('country', 'US')
@@ -307,7 +422,7 @@ final class GroupTest extends CIUnitTestCase
         $this->assertSame('Derek Jones', $result[0]->name);
     }
 
-    public function testOrNotGroups()
+    public function testOrNotGroups(): void
     {
         $result = $this->db->table('user')
             ->where('country', 'US')
@@ -324,7 +439,7 @@ final class GroupTest extends CIUnitTestCase
         $this->assertSame('Chris Martin', $result[2]->name);
     }
 
-    public function testGroupByCount()
+    public function testGroupByCount(): void
     {
         $result = $this->db->table('user')
             ->selectCount('id', 'count')

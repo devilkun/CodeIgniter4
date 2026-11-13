@@ -8,36 +8,40 @@ on:
       - 'develop'
       - '4.*'
     paths:
-      - 'app/**'
-      - 'public/**'
-      - 'system/**'
+      - 'app/**.php'
+      - 'public/**.php'
+      - 'system/**.php'
       - '.github/workflows/test-phpcpd.yml'
   push:
     branches:
       - 'develop'
       - '4.*'
     paths:
-      - 'app/**'
-      - 'public/**'
-      - 'system/**'
+      - 'app/**.php'
+      - 'public/**.php'
+      - 'system/**.php'
       - '.github/workflows/test-phpcpd.yml'
 
+permissions:
+  contents: read
+
 jobs:
-  build:
-    name: Duplicate Code Detection
-    runs-on: ubuntu-20.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.0'
-          tools: phive
-          extensions: intl, json, mbstring, xml
-
-      - name: Detect code duplication
-        run: |
-            sudo phive --no-progress install --global --trust-gpg-keys 4AA394086372C20A phpcpd 
-            phpcpd --exclude system/Test --exclude system/ThirdParty --exclude system/Database/SQLSRV/Builder.php --exclude system/Database/SQLSRV/Forge.php app/ public/ system/
+  phpcpd:
+    # Note: Reusable workflow SHA must be manually updated. Check for updates with:
+    # git ls-remote https://github.com/codeigniter4/.github main | head -1
+    uses: codeigniter4/.github/.github/workflows/phpcpd.yml@0ad5e1bc5620281e766d3267205dc4c22f4ac0ee # main
+    with:
+      dirs: "app/ public/ system/"
+      options: >-
+        --exclude system/Test
+        --exclude system/ThirdParty
+        --exclude system/Database/SQLSRV/Builder.php
+        --exclude system/Database/SQLSRV/Forge.php
+        --exclude system/Database/MySQLi/Builder.php
+        --exclude system/Database/OCI8/Builder.php
+        --exclude system/Database/Postgre/Builder.php
+        --exclude system/Debug/Exceptions.php
+        --exclude system/HTTP/SiteURI.php
+        --exclude system/Validation/Rules.php
+        --exclude system/Autoloader/Autoloader.php
+        --exclude system/Config/Filters.php

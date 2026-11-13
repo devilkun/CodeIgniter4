@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,17 +16,27 @@ namespace CodeIgniter\Cookie;
 use CodeIgniter\Cookie\Exceptions\CookieException;
 use CodeIgniter\Test\CIUnitTestCase;
 use DateTimeImmutable;
-use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class CookieStoreTest extends CIUnitTestCase
 {
     /**
-     * @var array
+     * @var array{
+     *   prefix: string,
+     *   expires: int,
+     *   path: string,
+     *   domain: string,
+     *   secure: bool,
+     *   httponly: bool,
+     *   samesite: string,
+     *   raw: bool
+     * }
      */
-    private $defaults;
+    private array $defaults;
 
     protected function setUp(): void
     {
@@ -78,7 +90,7 @@ final class CookieStoreTest extends CIUnitTestCase
     public function testInvalidCookieStored(): void
     {
         $this->expectException(CookieException::class);
-        new CookieStore([new DateTimeImmutable('now')]);
+        new CookieStore([new DateTimeImmutable('now')]); // @phpstan-ignore argument.type
     }
 
     public function testPutRemoveCookiesInStore(): void
@@ -97,29 +109,6 @@ final class CookieStoreTest extends CIUnitTestCase
         $this->assertTrue($bottle->has('test'));
         $this->assertTrue($store->has('dev'));
         $this->assertFalse($jar->has('dev'));
-    }
-
-    public function testCookieDispatching(): void
-    {
-        $cookies = [
-            'dev'  => new Cookie('dev', 'cookie'),
-            'prod' => new Cookie('prod', 'cookie', ['raw' => true]),
-        ];
-
-        $dev  = $cookies['dev']->getOptions();
-        $prod = $cookies['prod']->getOptions();
-
-        /**
-         * @var MockObject&CookieStore $store
-         */
-        $store = $this->getMockBuilder(CookieStore::class)
-            ->setConstructorArgs([$cookies])
-            ->onlyMethods(['setRawCookie', 'setCookie'])
-            ->getMock();
-
-        $store->expects($this->once())->method('setRawCookie')->with('prod', 'cookie', $prod);
-        $store->expects($this->once())->method('setCookie')->with('dev', 'cookie', $dev);
-        $store->dispatch();
     }
 
     public function testCookiesFunction(): void

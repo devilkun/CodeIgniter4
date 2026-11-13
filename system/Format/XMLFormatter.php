@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,6 +16,7 @@ namespace CodeIgniter\Format;
 use CodeIgniter\Format\Exceptions\FormatException;
 use Config\Format;
 use SimpleXMLElement;
+use Stringable;
 
 /**
  * XML data formatter
@@ -25,7 +28,7 @@ class XMLFormatter implements FormatterInterface
      *
      * @param mixed $data
      *
-     * @return bool|string (XML string | false)
+     * @return false|non-empty-string
      */
     public function format($data)
     {
@@ -34,10 +37,7 @@ class XMLFormatter implements FormatterInterface
         // SimpleXML is installed but default
         // but best to check, and then provide a fallback.
         if (! extension_loaded('simplexml')) {
-            // never thrown in travis-ci
-            // @codeCoverageIgnoreStart
-            throw FormatException::forMissingExtension();
-            // @codeCoverageIgnoreEnd
+            throw FormatException::forMissingExtension(); // @codeCoverageIgnore
         }
 
         $options = $config->formatterOptions['application/xml'] ?? 0;
@@ -55,7 +55,10 @@ class XMLFormatter implements FormatterInterface
      *
      * @see http://www.codexworld.com/convert-array-to-xml-in-php/
      *
-     * @param SimpleXMLElement $output
+     * @param array<array-key, mixed> $data
+     * @param SimpleXMLElement        $output
+     *
+     * @return void
      */
     protected function arrayToXML(array $data, &$output)
     {
@@ -66,7 +69,11 @@ class XMLFormatter implements FormatterInterface
                 $subnode = $output->addChild("{$key}");
                 $this->arrayToXML($value, $subnode);
             } else {
-                $output->addChild("{$key}", htmlspecialchars("{$value}"));
+                if (is_object($value) && ! $value instanceof Stringable) {
+                    throw FormatException::forInvalidXMLValue($value::class);
+                }
+
+                $output->addChild("{$key}", htmlspecialchars((string) $value));
             }
         }
     }
@@ -90,10 +97,14 @@ class XMLFormatter implements FormatterInterface
             '\\x{FDF0}-\\x{FFFD}\\x{10000}-\\x{EFFFF}';
         $validName = $startChar . '\\.\\d\\x{B7}\\x{300}-\\x{36F}\\x{203F}-\\x{2040}';
 
+        $key = (string) $key;
+
         $key = trim($key);
         $key = preg_replace("/[^{$validName}-]+/u", '', $key);
         $key = preg_replace("/^[^{$startChar}]+/u", 'item$0', $key);
 
-        return preg_replace('/^(xml).*/iu', 'item$0', $key); // XML is a reserved starting word
+        $key = preg_replace('/^(xml).*/iu', 'item$0', $key); // XML is a reserved starting word
+
+        return $key === '' ? 'item' : $key;
     }
 }

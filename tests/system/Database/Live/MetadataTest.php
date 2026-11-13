@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,37 +16,36 @@ namespace CodeIgniter\Database\Live;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use Config\Database;
+use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\Database\Seeds\CITestSeeder;
 
 /**
- * @group DatabaseLive
- *
  * @internal
  */
+#[Group('DatabaseLive')]
 final class MetadataTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
-    protected $refresh = true;
-    protected $seed    = 'Tests\Support\Database\Seeds\CITestSeeder';
+    protected $seed = CITestSeeder::class;
 
     /**
-     * Array of expected tables.
-     *
-     * @var array
+     * @var list<string>
      */
-    protected $expectedTables;
+    private array $expectedTables = [];
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        // Prepare the array of expected tables once
-        $prefix               = $this->db->getPrefix();
-        $this->expectedTables = [
+        $prefix = $this->db->getPrefix();
+
+        $tables = [
             $prefix . 'migrations',
             $prefix . 'user',
             $prefix . 'job',
             $prefix . 'misc',
+            $prefix . 'team_members',
             $prefix . 'type_test',
             $prefix . 'empty',
             $prefix . 'secondary',
@@ -54,55 +55,110 @@ final class MetadataTest extends CIUnitTestCase
         ];
 
         if (in_array($this->db->DBDriver, ['MySQLi', 'Postgre'], true)) {
-            $this->expectedTables[] = $prefix . 'ci_sessions';
+            $tables[] = $prefix . 'ci_sessions';
+        }
+
+        sort($tables);
+        $this->expectedTables = $tables;
+    }
+
+    private function createExtraneousTable(): void
+    {
+        $oldPrefix = $this->db->getPrefix();
+        $this->db->setPrefix('tmp_');
+
+        Database::forge($this->DBGroup)
+            ->addField([
+                'name'       => ['type' => 'varchar', 'constraint' => 31],
+                'created_at' => ['type' => 'datetime', 'null' => true],
+            ])
+            ->createTable('widgets');
+
+        $this->db->setPrefix($oldPrefix);
+    }
+
+    private function dropExtraneousTable(): void
+    {
+        $oldPrefix = $this->db->getPrefix();
+        $this->db->setPrefix('tmp_');
+
+        Database::forge($this->DBGroup)->dropTable('widgets', true);
+
+        $this->db->setPrefix($oldPrefix);
+    }
+
+    public function testListTablesUnconstrainedByPrefixReturnsAllTables(): void
+    {
+        try {
+            $this->createExtraneousTable();
+
+            $tables = $this->db->listTables();
+            $this->assertIsArray($tables);
+            $this->assertNotSame([], $tables);
+
+            $expectedTables   = $this->expectedTables;
+            $expectedTables[] = 'tmp_widgets';
+
+            sort($tables);
+            $this->assertSame($expectedTables, $tables);
+        } finally {
+            $this->dropExtraneousTable();
         }
     }
 
-    public function testListTables()
+    public function testListTablesConstrainedByPrefixReturnsOnlyTablesWithMatchingPrefix(): void
     {
-        $result = $this->db->listTables(true);
+        try {
+            $this->createExtraneousTable();
 
-        $this->assertSame($this->expectedTables, array_values($result));
+            $tables = $this->db->listTables(true);
+            $this->assertIsArray($tables);
+            $this->assertNotSame([], $tables);
+
+            sort($tables);
+            $this->assertSame($this->expectedTables, $tables);
+        } finally {
+            $this->dropExtraneousTable();
+        }
     }
 
-    public function testListTablesConstrainPrefix()
+    public function testListTablesConstrainedByExtraneousPrefixReturnsOnlyTheExtraneousTable(): void
     {
-        $result = $this->db->listTables(true);
+        $oldPrefix = '';
 
-        $this->assertSame($this->expectedTables, array_values($result));
+        try {
+            $this->createExtraneousTable();
+
+            $oldPrefix = $this->db->getPrefix();
+            $this->db->setPrefix('tmp_');
+
+            $tables = $this->db->listTables(true);
+            $this->assertIsArray($tables);
+            $this->assertNotSame([], $tables);
+
+            sort($tables);
+            $this->assertSame(['tmp_widgets'], $tables);
+        } finally {
+            $this->db->setPrefix($oldPrefix);
+            $this->dropExtraneousTable();
+        }
     }
 
-    public function testConstrainPrefixIgnoresOtherTables()
+    public function testListTablesReturnsListAfterCachedTableIsDropped(): void
     {
-        $this->forge = Database::forge($this->DBGroup);
+        try {
+            $this->createExtraneousTable();
 
-        // Stash the prefix and change it
-        $DBPrefix = $this->db->getPrefix();
-        $this->db->setPrefix('tmp_');
+            $tables = $this->db->listTables();
+            $this->assertSame(array_values($tables), $tables);
 
-        // Create a table with the new prefix
-        $fields = [
-            'name' => [
-                'type'       => 'varchar',
-                'constraint' => 31,
-            ],
-            'created_at' => [
-                'type' => 'datetime',
-                'null' => true,
-            ],
-        ];
-        $this->forge->addField($fields);
-        $this->forge->createTable('widgets');
+            $this->dropExtraneousTable();
 
-        // Restore the prefix and get the tables with the original prefix
-        $this->db->setPrefix($DBPrefix);
-        $result = $this->db->listTables(true);
-
-        $this->assertSame($this->expectedTables, array_values($result));
-
-        // Clean up temporary table
-        $this->db->setPrefix('tmp_');
-        $this->forge->dropTable('widgets');
-        $this->db->setPrefix($DBPrefix);
+            $tables = $this->db->listTables();
+            $this->assertSame(array_values($tables), $tables);
+            $this->assertNotContains('tmp_widgets', $tables);
+        } finally {
+            $this->dropExtraneousTable();
+        }
     }
 }

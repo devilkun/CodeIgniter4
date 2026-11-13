@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,10 +16,12 @@ namespace CodeIgniter\Database\Builder;
 use CodeIgniter\Database\BaseBuilder;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\Mock\MockConnection;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class OrderTest extends CIUnitTestCase
 {
     protected $db;
@@ -29,7 +33,7 @@ final class OrderTest extends CIUnitTestCase
         $this->db = new MockConnection([]);
     }
 
-    public function testOrderAscending()
+    public function testOrderAscending(): void
     {
         $builder = new BaseBuilder('user', $this->db);
 
@@ -40,7 +44,7 @@ final class OrderTest extends CIUnitTestCase
         $this->assertSame($expectedSQL, str_replace("\n", ' ', $builder->getCompiledSelect()));
     }
 
-    public function testOrderDescending()
+    public function testOrderDescending(): void
     {
         $builder = new BaseBuilder('user', $this->db);
 
@@ -51,7 +55,7 @@ final class OrderTest extends CIUnitTestCase
         $this->assertSame($expectedSQL, str_replace("\n", ' ', $builder->getCompiledSelect()));
     }
 
-    public function testOrderRandom()
+    public function testOrderRandom(): void
     {
         $builder = new BaseBuilder('user', $this->db);
 
@@ -62,7 +66,7 @@ final class OrderTest extends CIUnitTestCase
         $this->assertSame($expectedSQL, str_replace("\n", ' ', $builder->getCompiledSelect()));
     }
 
-    public function testOrderRandomWithRandomColumn()
+    public function testOrderRandomWithRandomColumn(): void
     {
         $this->db->setPrefix('fail_');
         $builder = new BaseBuilder('user', $this->db);

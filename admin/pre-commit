@@ -2,7 +2,6 @@
 
 PROJECT=`php -r "echo dirname(dirname(dirname(realpath('$0'))));"`
 STAGED_PHP_FILES=`git diff --cached --name-only --diff-filter=ACMR HEAD | grep \\\\.php$`
-STAGED_RST_FILES=`git diff --cached --name-only --diff-filter=ACMR HEAD | grep \\\\.rst$`
 
 echo "Starting CodeIgniter precommit..."
 
@@ -21,53 +20,15 @@ if [ "$STAGED_PHP_FILES" != "" ]; then
 fi
 
 if [ "$FILES" != "" ]; then
-    echo "Running PHPStan..."
-
-    # Run on whole codebase
-    if [ -d /proc/cygdrive ]; then
-        ./vendor/bin/phpstan analyse
-    else
-        php ./vendor/bin/phpstan analyse
-    fi
-
-    if [ $? != 0 ]; then
-        echo "Fix the phpstan error(s) before commit."
-        exit 1
-    fi
-fi
-
-if [ "$FILES" != "" ]; then
     echo "Running PHP CS Fixer..."
 
     # Run on whole codebase to skip on unnecessary filtering
-    # Run first on app, admin, public
-    if [ -d /proc/cygdrive ]; then
-        ./vendor/bin/php-cs-fixer fix --verbose --dry-run --diff --config=.no-header.php-cs-fixer.dist.php
-    else
-        php ./vendor/bin/php-cs-fixer fix --verbose --dry-run --diff --config=.no-header.php-cs-fixer.dist.php
-    fi
+    composer cs
 
     if [ $? != 0 ]; then
-        echo "Files in app, admin, or public are not following the coding standards. Please fix them before commit."
+        echo "There are PHP files which are not following the coding standards. Please fix them before commit."
         exit 1
     fi
-
-    # Next, run on system, tests, utils, and root PHP files
-    if [ -d /proc/cygdrive ]; then
-        ./vendor/bin/php-cs-fixer fix --verbose --dry-run --diff
-    else
-        php ./vendor/bin/php-cs-fixer fix --verbose --dry-run --diff
-    fi
-
-    if [ $? != 0 ]; then
-        echo "Files in system, tests, utils, or root are not following the coding standards. Please fix them before commit."
-        exit 1
-    fi
-fi
-
-if [ "$STAGED_RST_FILES" != "" ]; then
-    echo "Checking for tabs in RST files"
-    php ./utils/check_tabs_in_rst.php
 fi
 
 exit $?

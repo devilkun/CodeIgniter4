@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -20,6 +22,11 @@ use Config\Encryption as EncryptionConfig;
  * Provides two-way keyed encryption via PHP's Sodium and/or OpenSSL extensions.
  * This class determines the driver, cipher, and mode to use, and then
  * initializes the appropriate encryption handler.
+ *
+ * @property-read string       $digest
+ * @property-read string       $driver
+ * @property-read list<string> $drivers
+ * @property-read string       $key
  */
 class Encryption
 {
@@ -61,7 +68,7 @@ class Encryption
     /**
      * Map of drivers to handler classes, in preference order
      *
-     * @var array
+     * @var list<string>
      */
     protected $drivers = [
         'OpenSSL',
@@ -71,7 +78,7 @@ class Encryption
     /**
      * Handlers that are to be installed
      *
-     * @var array<string, boolean>
+     * @var array<string, bool>
      */
     protected $handlers = [];
 
@@ -80,11 +87,11 @@ class Encryption
      */
     public function __construct(?EncryptionConfig $config = null)
     {
-        $config = $config ?? new EncryptionConfig();
+        $config ??= new EncryptionConfig();
 
         $this->key    = $config->key;
         $this->driver = $config->driver;
-        $this->digest = $config->digest ?? 'SHA512';
+        $this->digest = $config->digest;
 
         $this->handlers = [
             'OpenSSL' => extension_loaded('openssl'),
@@ -100,19 +107,19 @@ class Encryption
     /**
      * Initialize or re-initialize an encrypter
      *
-     * @throws EncryptionException
-     *
      * @return EncrypterInterface
+     *
+     * @throws EncryptionException
      */
     public function initialize(?EncryptionConfig $config = null)
     {
-        if ($config) {
+        if ($config instanceof EncryptionConfig) {
             $this->key    = $config->key;
             $this->driver = $config->driver;
-            $this->digest = $config->digest ?? 'SHA512';
+            $this->digest = $config->digest;
         }
 
-        if (empty($this->driver)) {
+        if ($this->driver === null || $this->driver === '') {
             throw EncryptionException::forNoDriverRequested();
         }
 
@@ -120,7 +127,7 @@ class Encryption
             throw EncryptionException::forUnKnownHandler($this->driver);
         }
 
-        if (empty($this->key)) {
+        if (in_array($this->key, [null, '', '0'], true)) {
             throw EncryptionException::forNeedsStarterKey();
         }
 
@@ -128,6 +135,16 @@ class Encryption
 
         $handlerName     = 'CodeIgniter\\Encryption\\Handlers\\' . $this->driver . 'Handler';
         $this->encrypter = new $handlerName($config);
+
+        // (array) '' is [''], not [], so the unset default must be filtered out here.
+        $previousKeys = array_values(array_filter(
+            (array) ($config->previousKeys ?? []),
+            static fn ($key): bool => $key !== '',
+        ));
+
+        if ($previousKeys !== []) {
+            $this->encrypter = new KeyRotationDecorator($this->encrypter, $previousKeys);
+        }
 
         return $this->encrypter;
     }
@@ -149,7 +166,7 @@ class Encryption
      *
      * @param string $key Property name
      *
-     * @return mixed
+     * @return list<string>|string|null
      */
     public function __get($key)
     {

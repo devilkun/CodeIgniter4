@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,12 +15,15 @@ namespace CodeIgniter\Commands;
 
 use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
+use CodeIgniter\CLI\Commands;
 
 /**
  * CI Help command for the spark script.
  *
  * Lists the basic usage information for the spark script,
  * and provides a way to list help for other commands.
+ *
+ * @phpstan-import-type commands_list from Commands
  */
 class ListCommands extends BaseCommand
 {
@@ -54,14 +59,14 @@ class ListCommands extends BaseCommand
     /**
      * the Command's Arguments
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $arguments = [];
 
     /**
      * the Command's Options
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $options = [
         '--simple' => 'Prints a list of the commands with no other info',
@@ -69,6 +74,8 @@ class ListCommands extends BaseCommand
 
     /**
      * Displays the help for the spark cli script itself.
+     *
+     * @return int
      */
     public function run(array $params)
     {
@@ -76,13 +83,17 @@ class ListCommands extends BaseCommand
         ksort($commands);
 
         // Check for 'simple' format
-        return array_key_exists('simple', $params) || CLI::getOption('simple')
+        return array_key_exists('simple', $params) || CLI::getOption('simple') === true
             ? $this->listSimple($commands)
             : $this->listFull($commands);
     }
 
     /**
      * Lists the commands with accompanying info.
+     *
+     * @param commands_list $commands
+     *
+     * @return int
      */
     protected function listFull(array $commands)
     {
@@ -90,14 +101,12 @@ class ListCommands extends BaseCommand
         $groups = [];
 
         foreach ($commands as $title => $command) {
-            if (! isset($groups[$command['group']])) {
-                $groups[$command['group']] = [];
-            }
+            $groups[$command['group']] ??= [];
 
             $groups[$command['group']][$title] = $command;
         }
 
-        $length = max(array_map('strlen', array_keys($commands)));
+        $length = max(array_map(strlen(...), array_keys($commands)));
 
         ksort($groups);
 
@@ -120,15 +129,23 @@ class ListCommands extends BaseCommand
                 CLI::newLine();
             }
         }
+
+        return EXIT_SUCCESS;
     }
 
     /**
      * Lists the commands only.
+     *
+     * @param commands_list $commands
+     *
+     * @return int
      */
     protected function listSimple(array $commands)
     {
         foreach (array_keys($commands) as $title) {
             CLI::write($title);
         }
+
+        return EXIT_SUCCESS;
     }
 }

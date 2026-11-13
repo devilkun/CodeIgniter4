@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,20 +15,21 @@ namespace CodeIgniter\Database\Live;
 
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
+use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\Database\Seeds\CITestSeeder;
 
 /**
- * @group DatabaseLive
- *
  * @internal
  */
+#[Group('DatabaseLive')]
 final class LimitTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
+
     protected $refresh = true;
+    protected $seed    = CITestSeeder::class;
 
-    protected $seed = 'Tests\Support\Database\Seeds\CITestSeeder';
-
-    public function testLimit()
+    public function testLimit(): void
     {
         $jobs = $this->db->table('job')
             ->limit(2)
@@ -38,7 +41,7 @@ final class LimitTest extends CIUnitTestCase
         $this->assertSame('Politician', $jobs[1]->name);
     }
 
-    public function testLimitAndOffset()
+    public function testLimitAndOffset(): void
     {
         $jobs = $this->db->table('job')
             ->limit(2, 2)

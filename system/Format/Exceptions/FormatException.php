@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,20 +14,19 @@
 namespace CodeIgniter\Format\Exceptions;
 
 use CodeIgniter\Exceptions\DebugTraceableTrait;
-use CodeIgniter\Exceptions\ExceptionInterface;
-use RuntimeException;
+use CodeIgniter\Exceptions\RuntimeException;
 
 /**
  * FormatException
  */
-class FormatException extends RuntimeException implements ExceptionInterface
+class FormatException extends RuntimeException
 {
     use DebugTraceableTrait;
 
     /**
      * Thrown when the instantiated class does not exist.
      *
-     * @return FormatException
+     * @return static
      */
     public static function forInvalidFormatter(string $class)
     {
@@ -36,9 +37,9 @@ class FormatException extends RuntimeException implements ExceptionInterface
      * Thrown in JSONFormatter when the json_encode produces
      * an error code other than JSON_ERROR_NONE and JSON_ERROR_RECURSION.
      *
-     * @param string $error
+     * @param string|null $error The error message
      *
-     * @return FormatException
+     * @return static
      */
     public static function forInvalidJSON(?string $error = null)
     {
@@ -49,7 +50,7 @@ class FormatException extends RuntimeException implements ExceptionInterface
      * Thrown when the supplied MIME type has no
      * defined Formatter class.
      *
-     * @return FormatException
+     * @return static
      */
     public static function forInvalidMime(string $mime)
     {
@@ -57,10 +58,21 @@ class FormatException extends RuntimeException implements ExceptionInterface
     }
 
     /**
+     * Thrown in XMLFormatter when a value cannot be converted
+     * to a string.
+     *
+     * @return static
+     */
+    public static function forInvalidXMLValue(string $type)
+    {
+        return new static(lang('Format.invalidXMLValue', [$type]));
+    }
+
+    /**
      * Thrown on XMLFormatter when the `simplexml` extension
      * is not installed.
      *
-     * @return FormatException
+     * @return static
      *
      * @codeCoverageIgnore
      */

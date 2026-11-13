@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -48,12 +50,12 @@ class Help extends BaseCommand
      *
      * @var string
      */
-    protected $usage = 'help command_name';
+    protected $usage = 'help [<command_name>]';
 
     /**
      * the Command's Arguments
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $arguments = [
         'command_name' => 'The command name [default: "help"]',
@@ -62,7 +64,7 @@ class Help extends BaseCommand
     /**
      * the Command's Options
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $options = [];
 
@@ -71,8 +73,8 @@ class Help extends BaseCommand
      */
     public function run(array $params)
     {
-        $command  = array_shift($params);
-        $command  = $command ?? 'help';
+        $command = array_shift($params);
+        $command ??= 'help';
         $commands = $this->commands->getCommands();
 
         if (! $this->commands->verifyCommand($command, $commands)) {

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -10,8 +12,6 @@
  */
 
 namespace CodeIgniter\Debug\Toolbar\Collectors;
-
-use CodeIgniter\Debug\Exceptions;
 
 /**
  * Base Toolbar collector
@@ -105,6 +105,8 @@ class BaseCollector
     /**
      * Grabs the data for the timeline, properly formatted,
      * or returns an empty array.
+     *
+     * @return list<array<string, mixed>>
      */
     public function timelineData(): array
     {
@@ -139,6 +141,8 @@ class BaseCollector
      *          'bar' => 'baz'
      *      ],
      *  ];
+     *
+     * @return array<string, mixed>|null
      */
     public function getVarData()
     {
@@ -157,6 +161,8 @@ class BaseCollector
      *      'start'     => 10       // milliseconds
      *      'duration'  => 15       // milliseconds
      *  ]
+     *
+     * @return list<array<string, mixed>>
      */
     protected function formatTimelineData(): array
     {
@@ -166,7 +172,7 @@ class BaseCollector
     /**
      * Returns the data of this collector to be formatted in the toolbar
      *
-     * @return array|string
+     * @return array<string, mixed>|string
      */
     public function display()
     {
@@ -174,17 +180,19 @@ class BaseCollector
     }
 
     /**
-     * Clean Path
-     *
      * This makes nicer looking paths for the error output.
+     *
+     * @deprecated Use the dedicated `clean_path()` function.
      */
     public function cleanPath(string $file): string
     {
-        return Exceptions::cleanPath($file);
+        return clean_path($file);
     }
 
     /**
      * Gets the "badge" value for the button.
+     *
+     * @return int|null
      */
     public function getBadgeValue()
     {
@@ -214,6 +222,20 @@ class BaseCollector
 
     /**
      * Return settings as an array.
+     *
+     * @return array{
+     *   title: string,
+     *   titleSafe: string,
+     *   titleDetails: string,
+     *   display: array<string, mixed>|string,
+     *   badgeValue: int|null,
+     *   isEmpty: bool,
+     *   hasTabContent: bool,
+     *   hasLabel: bool,
+     *   icon: string,
+     *   hasTimelineData: bool,
+     *   timelineData: list<array<string, mixed>>,
+     * }
      */
     public function getAsArray(): array
     {

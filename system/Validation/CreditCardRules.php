@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -28,7 +30,7 @@ class CreditCardRules
      *  prefixes    - List of possible prefixes for the card
      *  checkdigit  - Boolean on whether we should do a modulus10 check on the numbers.
      *
-     * @var array
+     * @var array<string, array{name: string, length: string, prefixes: string, checkdigit: bool}>
      */
     protected $cards = [
         'American Express' => [
@@ -184,7 +186,7 @@ class CreditCardRules
         }
 
         // If empty, it's not a card type we recognize, or invalid type.
-        if (empty($info)) {
+        if ($info === null) {
             return false;
         }
 
@@ -196,8 +198,7 @@ class CreditCardRules
         // Remove any spaces and dashes
         $ccNumber = str_replace([' ', '-'], '', $ccNumber);
 
-        // Non-numeric values cannot be a number...duh
-        if (! is_numeric($ccNumber)) {
+        if (! ctype_digit($ccNumber)) {
             return false;
         }
 
@@ -214,7 +215,7 @@ class CreditCardRules
         $validPrefix = false;
 
         foreach ($prefixes as $prefix) {
-            if (strpos($ccNumber, $prefix) === 0) {
+            if (str_starts_with($ccNumber, $prefix)) {
                 $validPrefix = true;
                 break;
             }
@@ -236,8 +237,6 @@ class CreditCardRules
 
     /**
      * Checks the given number to see if the number passing a Luhn check.
-     *
-     * @param string $number
      */
     protected function isValidLuhn(?string $number = null): bool
     {

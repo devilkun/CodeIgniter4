@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -21,9 +23,9 @@ class Registrar
     /**
      * DB config array for testing purposes.
      *
-     * @var array
+     * @var array<string, array<string, array<string, bool|int|string>|bool|int|string>>
      */
-    protected static $dbConfig = [
+    protected static array $dbConfig = [
         'MySQLi' => [
             'DSN'      => '',
             'hostname' => '127.0.0.1',
@@ -33,13 +35,13 @@ class Registrar
             'DBDriver' => 'MySQLi',
             'DBPrefix' => 'db_',
             'pConnect' => false,
-            'DBDebug'  => (ENVIRONMENT !== 'production'),
-            'charset'  => 'utf8',
-            'DBCollat' => 'utf8_general_ci',
+            'DBDebug'  => true,
+            'charset'  => 'utf8mb4',
+            'DBCollat' => 'utf8mb4_general_ci',
             'swapPre'  => '',
             'encrypt'  => false,
             'compress' => false,
-            'strictOn' => false,
+            'strictOn' => true,
             'failover' => [],
             'port'     => 3306,
         ],
@@ -52,34 +54,36 @@ class Registrar
             'DBDriver' => 'Postgre',
             'DBPrefix' => 'db_',
             'pConnect' => false,
-            'DBDebug'  => (ENVIRONMENT !== 'production'),
+            'DBDebug'  => true,
             'charset'  => 'utf8',
-            'DBCollat' => 'utf8_general_ci',
+            'DBCollat' => '',
             'swapPre'  => '',
             'encrypt'  => false,
             'compress' => false,
-            'strictOn' => false,
+            'strictOn' => true, // @todo 4.7.0 to remove in v4.8.0
             'failover' => [],
             'port'     => 5432,
         ],
         'SQLite3' => [
-            'DSN'      => '',
-            'hostname' => 'localhost',
-            'username' => '',
-            'password' => '',
-            'database' => 'database.db',
-            'DBDriver' => 'SQLite3',
-            'DBPrefix' => 'db_',
-            'pConnect' => false,
-            'DBDebug'  => (ENVIRONMENT !== 'production'),
-            'charset'  => 'utf8',
-            'DBCollat' => 'utf8_general_ci',
-            'swapPre'  => '',
-            'encrypt'  => false,
-            'compress' => false,
-            'strictOn' => false,
-            'failover' => [],
-            'port'     => 3306,
+            'DSN'         => '',
+            'hostname'    => 'localhost',
+            'username'    => '',
+            'password'    => '',
+            'database'    => 'database.db',
+            'DBDriver'    => 'SQLite3',
+            'DBPrefix'    => 'db_',
+            'pConnect'    => false,
+            'DBDebug'     => true,
+            'charset'     => 'utf8',
+            'DBCollat'    => '',
+            'swapPre'     => '',
+            'encrypt'     => false,
+            'compress'    => false,
+            'strictOn'    => true, // @todo 4.7.0 to remove in v4.8.0
+            'failover'    => [],
+            'port'        => 3306,
+            'foreignKeys' => true,
+            'synchronous' => 0,
         ],
         'SQLSRV' => [
             'DSN'      => '',
@@ -90,34 +94,50 @@ class Registrar
             'DBDriver' => 'SQLSRV',
             'DBPrefix' => 'db_',
             'pConnect' => false,
-            'DBDebug'  => (ENVIRONMENT !== 'production'),
+            'DBDebug'  => true,
             'charset'  => 'utf8',
-            'DBCollat' => 'utf8_general_ci',
+            'DBCollat' => '',
             'swapPre'  => '',
             'encrypt'  => false,
             'compress' => false,
-            'strictOn' => false,
+            'strictOn' => true, // @todo 4.7.0 to remove in v4.8.0
             'failover' => [],
             'port'     => 1433,
+        ],
+        'OCI8' => [
+            'DSN'      => 'localhost:1521/FREEPDB1',
+            'hostname' => '',
+            'username' => 'ORACLE',
+            'password' => 'ORACLE',
+            'database' => '',
+            'DBDriver' => 'OCI8',
+            'DBPrefix' => 'db_',
+            'pConnect' => false,
+            'DBDebug'  => true,
+            'charset'  => 'AL32UTF8',
+            'DBCollat' => '',
+            'swapPre'  => '',
+            'encrypt'  => false,
+            'compress' => false,
+            'strictOn' => true, // @todo 4.7.0 to remove in v4.8.0
+            'failover' => [],
         ],
     ];
 
     /**
      * Override database config
      *
-     * @return array
+     * @return array<string, array<string, bool|int|string>|bool|int|string>
      */
-    public static function Database()
+    public static function Database(): array
     {
         $config = [];
 
-        // Under Github Actions, we can set an ENV var named 'DB'
+        // Under GitHub Actions, we can set an ENV var named 'DB'
         // so that we can test against multiple databases.
-        if ($group = getenv('DB')) {
-            if (! empty(self::$dbConfig[$group])) {
-                $config['tests'] = self::$dbConfig[$group];
-            }
-        }
+        $group = env('DB', 'SQLite3');
+
+        $config['tests'] = self::$dbConfig[$group] ?? [];
 
         return $config;
     }
@@ -127,9 +147,9 @@ class Registrar
      *
      * @see PublisherRestrictionsTest::testRegistrarsNotAllowed()
      *
-     * @return array
+     * @return array<string, array<string, string>>
      */
-    public static function Publisher()
+    public static function Publisher(): array
     {
         return [
             'restrictions' => [SUPPORTPATH => '*'],

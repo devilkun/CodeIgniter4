@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,13 +15,12 @@ namespace CodeIgniter\HTTP;
 
 use CodeIgniter\Cookie\Cookie;
 use CodeIgniter\Cookie\CookieStore;
-use CodeIgniter\Cookie\Exceptions\CookieException;
 use CodeIgniter\HTTP\Exceptions\HTTPException;
 use Config\App;
-use Config\ContentSecurityPolicy as CSPConfig;
+use Config\Cookie as CookieConfig;
 
 /**
- * Representation of an outgoing, getServer-side response.
+ * Representation of an outgoing, server-side response.
  *
  * Per the HTTP specification, this interface includes properties for
  * each of the following:
@@ -29,14 +30,14 @@ use Config\ContentSecurityPolicy as CSPConfig;
  * - Headers
  * - Message body
  */
-class Response extends Message implements MessageInterface, ResponseInterface
+class Response extends Message implements ResponseInterface
 {
     use ResponseTrait;
 
     /**
      * HTTP status codes
      *
-     * @var array
+     * @var array<int, string>
      */
     protected static $statusCodes = [
         // 1xx: Informational
@@ -79,15 +80,15 @@ class Response extends Message implements MessageInterface, ResponseInterface
         410 => 'Gone',
         411 => 'Length Required',
         412 => 'Precondition Failed',
-        413 => 'Request Entity Too Large',
-        414 => 'Request-URI Too Long',
+        413 => 'Content Too Large', // https://www.iana.org/assignments/http-status-codes/http-status-codes.xml
+        414 => 'URI Too Long', // https://www.iana.org/assignments/http-status-codes/http-status-codes.xml
         415 => 'Unsupported Media Type',
         416 => 'Requested Range Not Satisfiable',
         417 => 'Expectation Failed',
         418 => "I'm a teapot", // April's Fools joke; http://www.ietf.org/rfc/rfc2324.txt
         // 419 (Authentication Timeout) is a non-standard status code with unknown origin
         421 => 'Misdirected Request', // http://www.iana.org/go/rfc7540 Section 9.1.2
-        422 => 'Unprocessable Entity', // http://www.iana.org/go/rfc4918
+        422 => 'Unprocessable Content', // https://www.iana.org/assignments/http-status-codes/http-status-codes.xml
         423 => 'Locked', // http://www.iana.org/go/rfc4918
         424 => 'Failed Dependency', // http://www.iana.org/go/rfc4918
         425 => 'Too Early', // https://datatracker.ietf.org/doc/draft-ietf-httpbis-replay/
@@ -144,43 +145,23 @@ class Response extends Message implements MessageInterface, ResponseInterface
      * @param App $config
      *
      * @todo Recommend removing reliance on config injection
+     *
+     * @deprecated 4.5.0 The param $config is no longer used.
      */
-    public function __construct($config)
+    public function __construct($config) // @phpstan-ignore-line
     {
         // Default to a non-caching page.
         // Also ensures that a Cache-control header exists.
         $this->noCache();
 
         // We need CSP object even if not enabled to avoid calls to non existing methods
-        $this->CSP = new ContentSecurityPolicy(new CSPConfig());
-
-        $this->CSPEnabled = $config->CSPEnabled;
-
-        // DEPRECATED COOKIE MANAGEMENT
-
-        $this->cookiePrefix   = $config->cookiePrefix;
-        $this->cookieDomain   = $config->cookieDomain;
-        $this->cookiePath     = $config->cookiePath;
-        $this->cookieSecure   = $config->cookieSecure;
-        $this->cookieHTTPOnly = $config->cookieHTTPOnly;
-        $this->cookieSameSite = $config->cookieSameSite ?? Cookie::SAMESITE_LAX;
-
-        $config->cookieSameSite = $config->cookieSameSite ?? Cookie::SAMESITE_LAX;
-
-        if (! in_array(strtolower($config->cookieSameSite ?: Cookie::SAMESITE_LAX), Cookie::ALLOWED_SAMESITE_VALUES, true)) {
-            throw CookieException::forInvalidSameSite($config->cookieSameSite);
-        }
+        $this->CSP = service('csp');
 
         $this->cookieStore = new CookieStore([]);
-        Cookie::setDefaults(config('Cookie') ?? [
-            // @todo Remove this fallback when deprecated `App` members are removed
-            'prefix'   => $config->cookiePrefix,
-            'path'     => $config->cookiePath,
-            'domain'   => $config->cookieDomain,
-            'secure'   => $config->cookieSecure,
-            'httponly' => $config->cookieHTTPOnly,
-            'samesite' => $config->cookieSameSite ?? Cookie::SAMESITE_LAX,
-        ]);
+
+        $cookie = config(CookieConfig::class);
+
+        Cookie::setDefaults($cookie);
 
         // Default to an HTML Content-Type. Devs can override if needed.
         $this->setContentType('text/html');
@@ -188,10 +169,14 @@ class Response extends Message implements MessageInterface, ResponseInterface
 
     /**
      * Turns "pretend" mode on or off to aid in testing.
+     *
      * Note that this is not a part of the interface so
      * should not be relied on outside of internal testing.
      *
      * @return $this
+     *
+     * @internal For testing purposes only.
+     * @testTag only available to test code
      */
     public function pretend(bool $pretend = true)
     {
@@ -203,32 +188,18 @@ class Response extends Message implements MessageInterface, ResponseInterface
     /**
      * Gets the response status code.
      *
-     * The status code is a 3-digit integer result code of the getServer's attempt
+     * The status code is a 3-digit integer result code of the server's attempt
      * to understand and satisfy the request.
      *
      * @return int Status code.
      */
     public function getStatusCode(): int
     {
-        if (empty($this->statusCode)) {
+        if ($this->statusCode === 0) {
             throw HTTPException::forMissingResponseStatus();
         }
 
         return $this->statusCode;
-    }
-
-    /**
-     * Gets the response response phrase associated with the status code.
-     *
-     * @see http://tools.ietf.org/html/rfc7231#section-6
-     * @see http://www.iana.org/assignments/http-status-codes/http-status-codes.xhtml
-     * @deprecated Use getReasonPhrase()
-     *
-     * @codeCoverageIgnore
-     */
-    public function getReason(): string
-    {
-        return $this->getReasonPhrase();
     }
 
     /**
@@ -248,7 +219,7 @@ class Response extends Message implements MessageInterface, ResponseInterface
     public function getReasonPhrase()
     {
         if ($this->reason === '') {
-            return ! empty($this->statusCode) ? static::$statusCodes[$this->statusCode] : '';
+            return $this->statusCode === 0 ? '' : static::$statusCodes[$this->statusCode];
         }
 
         return $this->reason;

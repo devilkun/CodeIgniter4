@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,12 +13,16 @@
 
 namespace CodeIgniter\Test;
 
+use Closure;
 use CodeIgniter\Events\Events;
+use CodeIgniter\Exceptions\RuntimeException;
+use CodeIgniter\HTTP\Exceptions\RedirectException;
 use CodeIgniter\HTTP\IncomingRequest;
+use CodeIgniter\HTTP\Method;
 use CodeIgniter\HTTP\Request;
+use CodeIgniter\HTTP\ResponseInterface;
+use CodeIgniter\HTTP\SiteURI;
 use CodeIgniter\HTTP\URI;
-use CodeIgniter\HTTP\UserAgent;
-use CodeIgniter\Router\Exceptions\RedirectException;
 use CodeIgniter\Router\RouteCollection;
 use Config\App;
 use Config\Services;
@@ -28,6 +34,12 @@ use ReflectionException;
  *
  * Provides additional utilities for doing full HTTP testing
  * against your application in trait format.
+ *
+ * @property array<array-key, mixed>            $session
+ * @property array<string, list<string>|string> $headers
+ * @property RouteCollection|null               $routes
+ *
+ * @mixin CIUnitTestCase
  */
 trait FeatureTestTrait
 {
@@ -37,22 +49,50 @@ trait FeatureTestTrait
      *
      * Example routes:
      * [
-     *    ['get', 'home', 'Home::index']
+     *    ['GET', 'home', 'Home::index'],
      * ]
      *
-     * @param array $routes
+     * @param array<int, array{
+     *      0: string,
+     *      1: string,
+     *      2: ((Closure(mixed...): (ResponseInterface|string|void)))|string,
+     *      3?: array<string, mixed>
+     *  }>|null $routes Array to set routes
      *
      * @return $this
      */
     protected function withRoutes(?array $routes = null)
     {
-        $collection = Services::routes();
+        $collection = service('routes');
 
-        if ($routes) {
+        if ($routes !== null) {
             $collection->resetRoutes();
 
             foreach ($routes as $route) {
-                $collection->{$route[0]}($route[1], $route[2]);
+                if ($route[0] === strtolower($route[0])) {
+                    @trigger_error(
+                        'Passing lowercase HTTP method "' . $route[0] . '" is deprecated.'
+                        . ' Use uppercase HTTP method like "' . strtoupper($route[0]) . '".',
+                        E_USER_DEPRECATED,
+                    );
+                }
+
+                // @todo v4.7.1 Remove the strtoupper() and use 'add' in v4.8.0
+                if (! in_array(strtoupper($route[0]), ['ADD', 'CLI', ...Method::all()], true)) {
+                    throw new RuntimeException(sprintf(
+                        'Invalid HTTP method "%s" provided for route "%s".',
+                        $route[0],
+                        $route[1],
+                    ));
+                }
+
+                $method = strtolower($route[0]); // convert to method of RouteCollection
+
+                if (isset($route[3])) {
+                    $collection->{$method}($route[1], $route[2], $route[3]);
+                } else {
+                    $collection->{$method}($route[1], $route[2]);
+                }
             }
         }
 
@@ -64,7 +104,7 @@ trait FeatureTestTrait
     /**
      * Sets any values that should exist during this session.
      *
-     * @param array|null $values Array of values, or null to use the current $_SESSION
+     * @param array<array-key, mixed>|null $values Array of values, or null to use the current $_SESSION
      *
      * @return $this
      */
@@ -80,10 +120,11 @@ trait FeatureTestTrait
      *
      * Example of use
      * withHeaders([
-     *  'Authorization' => 'Token'
+     *     'Authorization' => 'Token',
+     *     'Cache-Control' => ['no-cache', 'no-store'],
      * ])
      *
-     * @param array $headers Array of headers
+     * @param array<string, list<string>|string> $headers Array of headers
      *
      * @return $this
      */
@@ -111,7 +152,7 @@ trait FeatureTestTrait
     /**
      * Set the raw body for the request
      *
-     * @param mixed $body
+     * @param string $body
      *
      * @return $this
      */
@@ -138,40 +179,42 @@ trait FeatureTestTrait
      * Calls a single URI, executes it, and returns a TestResponse
      * instance that can be used to run many assertions against.
      *
-     * @throws RedirectException
-     * @throws Exception
+     * @param string                       $method HTTP verb
+     * @param array<array-key, mixed>|null $params
      *
      * @return TestResponse
      */
     public function call(string $method, string $path, ?array $params = null)
     {
-        $buffer = \ob_get_level();
-
-        // Clean up any open output buffers
-        // not relevant to unit testing
-        // @codeCoverageIgnoreStart
-        if (\ob_get_level() > 0 && (! isset($this->clean) || $this->clean === true)) {
-            \ob_end_clean();
+        if ($method === strtolower($method)) {
+            @trigger_error(
+                'Passing lowercase HTTP method "' . $method . '" is deprecated.'
+                . ' Use uppercase HTTP method like "' . strtoupper($method) . '".',
+                E_USER_DEPRECATED,
+            );
         }
-        // @codeCoverageIgnoreEnd
+
+        /**
+         * @deprecated 4.5.0
+         * @TODO remove this in the future.
+         */
+        $method = strtoupper($method);
 
         // Simulate having a blank session
-        $_SESSION                  = [];
-        $_SERVER['REQUEST_METHOD'] = $method;
+        $_SESSION = [];
+        service('superglobals')->setServer('REQUEST_METHOD', $method);
 
         $request = $this->setupRequest($method, $path);
         $request = $this->setupHeaders($request);
-        $request = $this->populateGlobals($method, $request, $params);
-        $request = $this->setRequestBody($request);
+        $name    = strtolower($method);
+        $request = $this->populateGlobals($name, $request, $params);
+        $request = $this->setRequestBody($request, $params);
 
         // Initialize the RouteCollection
-        if (! $routes = $this->routes) {
-            require APPPATH . 'Config/Routes.php';
+        $routes = $this->routes;
 
-            /**
-             * @var RouteCollection $routes
-             */
-            $routes->getRoutes('*');
+        if ($routes !== []) {
+            $routes = service('routes')->loadRoutes();
         }
 
         $routes->setHTTPVerb($method);
@@ -181,30 +224,18 @@ trait FeatureTestTrait
         Services::injectMock('request', $request);
 
         // Make sure filters are reset between tests
-        Services::injectMock('filters', Services::filters(null, false));
+        Services::injectMock('filters', service('filters', null, false));
+
+        // Make sure validation is reset between tests
+        Services::injectMock('validation', service('validation', null, false));
 
         $response = $this->app
+            ->setContext('web')
             ->setRequest($request)
             ->run($routes, true);
 
-        $output = \ob_get_contents();
-        if (empty($response->getBody()) && ! empty($output)) {
-            $response->setBody($output);
-        }
-
         // Reset directory if it has been set
-        Services::router()->setDirectory(null);
-
-        // Ensure the output buffer is identical so no tests are risky
-        // @codeCoverageIgnoreStart
-        while (\ob_get_level() > $buffer) {
-            \ob_end_clean();
-        }
-
-        while (\ob_get_level() < $buffer) {
-            \ob_start();
-        }
-        // @codeCoverageIgnoreEnd
+        service('router')->setDirectory();
 
         return new TestResponse($response);
     }
@@ -212,101 +243,129 @@ trait FeatureTestTrait
     /**
      * Performs a GET request.
      *
-     * @throws RedirectException
-     * @throws Exception
+     * @param string                       $path   URI path relative to baseURL. May include query.
+     * @param array<array-key, mixed>|null $params
      *
      * @return TestResponse
+     *
+     * @throws RedirectException
+     * @throws Exception
      */
     public function get(string $path, ?array $params = null)
     {
-        return $this->call('get', $path, $params);
+        return $this->call(Method::GET, $path, $params);
     }
 
     /**
      * Performs a POST request.
      *
-     * @throws RedirectException
-     * @throws Exception
+     * @param array<array-key, mixed>|null $params
      *
      * @return TestResponse
+     *
+     * @throws RedirectException
+     * @throws Exception
      */
     public function post(string $path, ?array $params = null)
     {
-        return $this->call('post', $path, $params);
+        return $this->call(Method::POST, $path, $params);
     }
 
     /**
      * Performs a PUT request
      *
-     * @throws RedirectException
-     * @throws Exception
+     * @param array<array-key, mixed>|null $params
      *
      * @return TestResponse
+     *
+     * @throws RedirectException
+     * @throws Exception
      */
     public function put(string $path, ?array $params = null)
     {
-        return $this->call('put', $path, $params);
+        return $this->call(Method::PUT, $path, $params);
     }
 
     /**
      * Performss a PATCH request
      *
-     * @throws RedirectException
-     * @throws Exception
+     * @param array<array-key, mixed>|null $params
      *
      * @return TestResponse
+     *
+     * @throws RedirectException
+     * @throws Exception
      */
     public function patch(string $path, ?array $params = null)
     {
-        return $this->call('patch', $path, $params);
+        return $this->call(Method::PATCH, $path, $params);
     }
 
     /**
      * Performs a DELETE request.
      *
-     * @throws RedirectException
-     * @throws Exception
+     * @param array<array-key, mixed>|null $params
      *
      * @return TestResponse
+     *
+     * @throws RedirectException
+     * @throws Exception
      */
     public function delete(string $path, ?array $params = null)
     {
-        return $this->call('delete', $path, $params);
+        return $this->call(Method::DELETE, $path, $params);
     }
 
     /**
      * Performs an OPTIONS request.
      *
-     * @throws RedirectException
-     * @throws Exception
+     * @param array<array-key, mixed>|null $params
      *
      * @return TestResponse
+     *
+     * @throws RedirectException
+     * @throws Exception
      */
     public function options(string $path, ?array $params = null)
     {
-        return $this->call('options', $path, $params);
+        return $this->call(Method::OPTIONS, $path, $params);
     }
 
     /**
      * Setup a Request object to use so that CodeIgniter
      * won't try to auto-populate some of the items.
+     *
+     * @param string $method HTTP verb
      */
     protected function setupRequest(string $method, ?string $path = null): IncomingRequest
     {
-        $path    = URI::removeDotSegments($path);
-        $config  = config(App::class);
-        $request = new IncomingRequest($config, new URI(), null, new UserAgent());
+        $config = config(App::class);
+        $uri    = new SiteURI($config);
 
         // $path may have a query in it
-        $parts                   = explode('?', $path);
-        $_SERVER['QUERY_STRING'] = $parts[1] ?? '';
+        $path  = URI::removeDotSegments($path);
+        $parts = explode('?', $path);
+        $path  = $parts[0];
+        $query = $parts[1] ?? '';
 
-        $request->setPath($parts[0]);
+        $superglobals = service('superglobals');
+        $superglobals->setServer('QUERY_STRING', $query);
+
+        $uri->setPath($path);
+        $uri->setQuery($query);
+
+        Services::injectMock('uri', $uri);
+
+        $request = service('incomingrequest', $config, false);
+
         $request->setMethod($method);
         $request->setProtocolVersion('1.1');
 
         if ($config->forceGlobalSecureRequests) {
-            $_SERVER['HTTPS'] = 'test';
+            service('superglobals')->setServer('HTTPS', 'test');
+            $server          = $request->getServer();
+            $server['HTTPS'] = 'test';
+            $request->setGlobal('server', $server);
         }
 
         return $request;
@@ -319,10 +378,8 @@ trait FeatureTestTrait
      */
     protected function setupHeaders(IncomingRequest $request)
     {
-        if (! empty($this->headers)) {
-            foreach ($this->headers as $name => $value) {
-                $request->setHeader($name, $value);
-            }
+        foreach ($this->headers as $name => $value) {
+            $request->setHeader($name, $value);
         }
 
         return $request;
@@ -334,26 +391,37 @@ trait FeatureTestTrait
      *
      * Always populate the GET vars based on the URI.
      *
-     * @throws ReflectionException
+     * @param string                                 $name    Superglobal name (lowercase)
+     * @param IncomingRequest                        $request
+     * @param non-empty-array<array-key, mixed>|null $params
      *
-     * @return Request
+     * @return IncomingRequest
+     *
+     * @throws ReflectionException
      */
-    protected function populateGlobals(string $method, Request $request, ?array $params = null)
+    protected function populateGlobals(string $name, Request $request, ?array $params = null)
     {
         // $params should set the query vars if present,
         // otherwise set it from the URL.
-        $get = ! empty($params) && $method === 'get'
+        $get = ($params !== null && $params !== [] && $name === 'get')
             ? $params
-            : $this->getPrivateProperty($request->uri, 'query'); // @phpstan-ignore-line
+            : $this->getPrivateProperty($request->getUri(), 'query');
 
         $request->setGlobal('get', $get);
-        if ($method !== 'get') {
-            $request->setGlobal($method, $params);
+
+        if ($name === 'get') {
+            $request->setGlobal('request', $request->fetchGlobal('get'));
         }
 
-        $request->setGlobal('request', $params);
+        if ($name === 'post') {
+            $request->setGlobal($name, $params ?? []);
+            $request->setGlobal(
+                'request',
+                (array) $request->fetchGlobal('post') + (array) $request->fetchGlobal('get'),
+            );
+        }
 
-        $_SESSION = $this->session ?? [];
+        $_SESSION = $this->session;
 
         return $request;
     }
@@ -363,31 +431,33 @@ trait FeatureTestTrait
      * This allows the body to be formatted in a way that the controller is going to
      * expect as in the case of testing a JSON or XML API.
      *
-     * @param array|null $params The parameters to be formatted and put in the body. If this is empty, it will get the
-     *                           what has been loaded into the request global of the request class.
+     * @param IncomingRequest              $request
+     * @param array<array-key, mixed>|null $params  The parameters to be formatted and put in the body.
+     *
+     * @return IncomingRequest
      */
     protected function setRequestBody(Request $request, ?array $params = null): Request
     {
-        if (isset($this->requestBody) && $this->requestBody !== '') {
+        if ($this->requestBody !== '') {
             $request->setBody($this->requestBody);
-
-            return $request;
         }
 
-        if (isset($this->bodyFormat) && $this->bodyFormat !== '') {
-            if (empty($params)) {
-                $params = $request->fetchGlobal('request');
-            }
+        if ($this->bodyFormat !== '') {
             $formatMime = '';
             if ($this->bodyFormat === 'json') {
                 $formatMime = 'application/json';
             } elseif ($this->bodyFormat === 'xml') {
                 $formatMime = 'application/xml';
             }
-            if (! empty($formatMime) && ! empty($params)) {
-                $formatted = Services::format()->getFormatter($formatMime)->format($params);
-                $request->setBody($formatted);
+
+            if ($formatMime !== '') {
                 $request->setHeader('Content-Type', $formatMime);
+            }
+
+            if ($params !== null && $formatMime !== '') {
+                $formatted = service('format')->getFormatter($formatMime)->format($params);
+                // "withBodyFormat() and $params of call()" has higher priority than withBody().
+                $request->setBody($formatted);
             }
         }
 

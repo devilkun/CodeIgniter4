@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,29 +16,26 @@ namespace CodeIgniter\Database\Migrations;
 use CodeIgniter\Database\Migration;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('DatabaseLive')]
 final class MigrationTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
-    protected function setUp(): void
+    public function testDBGroup(): void
     {
-        parent::setUp();
-    }
-
-    public function testDBGroup()
-    {
-        $migration             = new class () extends Migration {
+        $migration = new class () extends Migration {
             protected $DBGroup = 'tests';
 
-            public function up()
+            public function up(): void
             {
             }
 
-            public function down()
+            public function down(): void
             {
             }
         };

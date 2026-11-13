@@ -23,7 +23,7 @@ class UserAgents extends BaseConfig
      *
      * @var array<string, string>
      */
-    public $platforms = [
+    public array $platforms = [
         'windows nt 10.0' => 'Windows 10',
         'windows nt 6.3'  => 'Windows 8.1',
         'windows nt 6.2'  => 'Windows 8',
@@ -78,7 +78,7 @@ class UserAgents extends BaseConfig
      *
      * @var array<string, string>
      */
-    public $browsers = [
+    public array $browsers = [
         'OPR'    => 'Opera',
         'Flock'  => 'Flock',
         'Edge'   => 'Spartan',
@@ -119,7 +119,7 @@ class UserAgents extends BaseConfig
      *
      * @var array<string, string>
      */
-    public $mobiles = [
+    public array $mobiles = [
         // legacy array, old values commented out
         'mobileexplorer' => 'Mobile Explorer',
         // 'openwave'             => 'Open Wave',
@@ -228,11 +228,15 @@ class UserAgents extends BaseConfig
      *
      * @var array<string, string>
      */
-    public $robots = [
+    public array $robots = [
         'googlebot'            => 'Googlebot',
+        'google-pagerenderer'  => 'Google Page Renderer',
+        'google-read-aloud'    => 'Google Read Aloud',
+        'google-safety'        => 'Google Safety Bot',
         'msnbot'               => 'MSNBot',
         'baiduspider'          => 'Baiduspider',
         'bingbot'              => 'Bing',
+        'bingpreview'          => 'BingPreview',
         'slurp'                => 'Inktomi Slurp',
         'yahoo'                => 'Yahoo',
         'ask jeeves'           => 'Ask Jeeves',
@@ -248,5 +252,11 @@ class UserAgents extends BaseConfig
         'ia_archiver'          => 'Alexa Crawler',
         'MJ12bot'              => 'Majestic-12',
         'Uptimebot'            => 'Uptimebot',
+        'duckduckbot'          => 'DuckDuckBot',
+        'sogou'                => 'Sogou Spider',
+        'exabot'               => 'Exabot',
+        'bot'                  => 'Generic Bot',
+        'crawler'              => 'Generic Crawler',
+        'spider'               => 'Generic Spider',
     ];
 }

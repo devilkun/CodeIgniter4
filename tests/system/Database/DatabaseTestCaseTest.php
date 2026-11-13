@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,46 +15,24 @@ namespace CodeIgniter\Database;
 
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
-use Config\Services;
+use Config\Database;
+use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\Database\Seeds\AnotherSeeder;
+use Tests\Support\Database\Seeds\CITestSeeder;
 
 /**
- * @group DatabaseLive
- *
  * @internal
  */
+#[Group('DatabaseLive')]
 final class DatabaseTestCaseTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
-    protected static $loaded = false;
-
-    /**
-     * Should the db be refreshed before
-     * each test?
-     *
-     * @var bool
-     */
     protected $refresh = true;
-
-    /**
-     * The seed file(s) used for all tests within this test case.
-     * Should be fully-namespaced or relative to $basePath
-     *
-     * @var array|string
-     */
-    protected $seed = [
-        'Tests\Support\Database\Seeds\CITestSeeder',
-        'Tests\Support\Database\Seeds\AnotherSeeder',
+    protected $seed    = [
+        CITestSeeder::class,
+        AnotherSeeder::class,
     ];
-
-    /**
-     * The namespace(s) to help us find the migration classes.
-     * Empty is equivalent to running `spark migrate -all`.
-     * Note that running "all" runs migrations in date order,
-     * but specifying namespaces runs them in namespace order (then date)
-     *
-     * @var array|string|null
-     */
     protected $namespace = [
         'Tests\Support',
         'Tests\Support\MigrationTestMigrations',
@@ -60,20 +40,35 @@ final class DatabaseTestCaseTest extends CIUnitTestCase
 
     protected function setUp(): void
     {
-        if (! self::$loaded) {
-            Services::autoloader()->addNamespace('Tests\Support\MigrationTestMigrations', SUPPORTPATH . 'MigrationTestMigrations');
-            self::$loaded = true;
-        }
+        $forge = Database::forge();
+        $forge->dropTable('foo', true);
+
+        $this->setUpMethods[] = 'setUpAddNamespace';
 
         parent::setUp();
     }
 
-    public function testMultipleSeeders()
+    protected function setUpAddNamespace(): void
+    {
+        service('autoloader')->addNamespace(
+            'Tests\Support\MigrationTestMigrations',
+            SUPPORTPATH . 'MigrationTestMigrations',
+        );
+    }
+
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+
+        $this->regressDatabase();
+    }
+
+    public function testMultipleSeeders(): void
     {
         $this->seeInDatabase('user', ['name' => 'Jerome Lohan']);
     }
 
-    public function testMultipleMigrationNamespaces()
+    public function testMultipleMigrationNamespaces(): void
     {
         $this->seeInDatabase('foo', ['key' => 'foobar']);
     }

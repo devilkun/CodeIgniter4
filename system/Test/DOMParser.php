@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,11 +13,11 @@
 
 namespace CodeIgniter\Test;
 
-use BadMethodCallException;
+use CodeIgniter\Exceptions\BadMethodCallException;
+use CodeIgniter\Exceptions\InvalidArgumentException;
 use DOMDocument;
 use DOMNodeList;
 use DOMXPath;
-use InvalidArgumentException;
 
 /**
  * Load a response into a DOMDocument for testing assertions based on that
@@ -37,10 +39,7 @@ class DOMParser
     public function __construct()
     {
         if (! extension_loaded('DOM')) {
-            // always there in travis-ci
-            // @codeCoverageIgnoreStart
-            throw new BadMethodCallException('DOM extension is required, but not currently loaded.');
-            // @codeCoverageIgnoreEnd
+            throw new BadMethodCallException('DOM extension is required, but not currently loaded.'); // @codeCoverageIgnore
         }
 
         $this->dom = new DOMDocument('1.0', 'utf-8');
@@ -61,8 +60,11 @@ class DOMParser
      */
     public function withString(string $content)
     {
-        // converts all special characters to utf-8
-        $content = mb_convert_encoding($content, 'HTML-ENTITIES', 'UTF-8');
+        // DOMDocument::loadHTML() will treat your string as being in ISO-8859-1
+        // (the HTTP/1.1 default character set) unless you tell it otherwise.
+        // https://stackoverflow.com/a/8218649
+        // So encode characters to HTML numeric string references.
+        $content = mb_encode_numericentity($content, [0x80, 0x10FFFF, 0, 0x1FFFFF], 'UTF-8');
 
         // turning off some errors
         libxml_use_internal_errors(true);
@@ -86,7 +88,7 @@ class DOMParser
      * Loads the contents of a file as a string
      * so that we can work with it.
      *
-     * @return DOMParser
+     * @return $this
      */
     public function withFile(string $path)
     {
@@ -101,9 +103,6 @@ class DOMParser
 
     /**
      * Checks to see if the text is found within the result.
-     *
-     * @param string $search
-     * @param string $element
      */
     public function see(?string $search = null, ?string $element = null): bool
     {
@@ -111,7 +110,7 @@ class DOMParser
         if ($element === null) {
             $content = $this->dom->saveHTML($this->dom->documentElement);
 
-            return mb_strpos($content, $search) !== false;
+            return str_contains($content, $search);
         }
 
         $result = $this->doXPath($search, $element);
@@ -121,8 +120,6 @@ class DOMParser
 
     /**
      * Checks to see if the text is NOT found within the result.
-     *
-     * @param string $search
      */
     public function dontSee(?string $search = null, ?string $element = null): bool
     {
@@ -179,9 +176,29 @@ class DOMParser
     }
 
     /**
+     * Checks to see if the XPath can be found.
+     */
+    public function seeXPath(string $path): bool
+    {
+        $xpath = new DOMXPath($this->dom);
+
+        return (bool) $xpath->query($path)->length;
+    }
+
+    /**
+     * Checks to see if the XPath can't be found.
+     */
+    public function dontSeeXPath(string $path): bool
+    {
+        return ! $this->seeXPath($path);
+    }
+
+    /**
      * Search the DOM using an XPath expression.
      *
-     * @return DOMNodeList
+     * @param list<string> $paths
+     *
+     * @return DOMNodeList|false
      */
     protected function doXPath(?string $search, string $element, array $paths = [])
     {
@@ -192,23 +209,23 @@ class DOMParser
         $path = '';
 
         // By ID
-        if (! empty($selector['id'])) {
-            $path = empty($selector['tag'])
+        if (isset($selector['id'])) {
+            $path = ($selector['tag'] === '')
                 ? "id(\"{$selector['id']}\")"
                 : "//{$selector['tag']}[@id=\"{$selector['id']}\"]";
         }
         // By Class
-        elseif (! empty($selector['class'])) {
-            $path = empty($selector['tag'])
+        elseif (isset($selector['class'])) {
+            $path = ($selector['tag'] === '')
                 ? "//*[@class=\"{$selector['class']}\"]"
                 : "//{$selector['tag']}[@class=\"{$selector['class']}\"]";
         }
         // By tag only
-        elseif (! empty($selector['tag'])) {
+        elseif ($selector['tag'] !== '') {
             $path = "//{$selector['tag']}";
         }
 
-        if (! empty($selector['attr'])) {
+        if (isset($selector['attr'])) {
             foreach ($selector['attr'] as $key => $value) {
                 $path .= "[@{$key}=\"{$value}\"]";
             }
@@ -216,10 +233,8 @@ class DOMParser
 
         // $paths might contain a number of different
         // ready to go xpath portions to tack on.
-        if (! empty($paths) && is_array($paths)) {
-            foreach ($paths as $extra) {
-                $path .= $extra;
-            }
+        foreach ($paths as $extra) {
+            $path .= $extra;
         }
 
         if ($search !== null) {
@@ -234,7 +249,7 @@ class DOMParser
     /**
      * Look for the a selector  in the passed text.
      *
-     * @return array
+     * @return array{tag: string, id: string|null, class: string|null, attr: array<string, string>|null}
      */
     public function parseSelector(string $selector)
     {
@@ -243,11 +258,11 @@ class DOMParser
         $attr  = null;
 
         // ID?
-        if (strpos($selector, '#') !== false) {
+        if (str_contains($selector, '#')) {
             [$tag, $id] = explode('#', $selector);
         }
         // Attribute
-        elseif (strpos($selector, '[') !== false && strpos($selector, ']') !== false) {
+        elseif (str_contains($selector, '[') && str_contains($selector, ']')) {
             $open  = strpos($selector, '[');
             $close = strpos($selector, ']');
 
@@ -265,7 +280,7 @@ class DOMParser
             $attr  = [$name => trim($value, '] ')];
         }
         // Class?
-        elseif (strpos($selector, '.') !== false) {
+        elseif (str_contains($selector, '.')) {
             [$tag, $class] = explode('.', $selector);
         }
         // Otherwise, assume the entire string is our tag

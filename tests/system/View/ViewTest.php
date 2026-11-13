@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,31 +13,34 @@
 
 namespace CodeIgniter\View;
 
-use CodeIgniter\Config\Services;
+use CodeIgniter\Autoloader\FileLocatorInterface;
+use CodeIgniter\Exceptions\RuntimeException;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\View\Exceptions\ViewException;
-use Config;
-use RuntimeException;
+use Config\View as ViewConfig;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class ViewTest extends CIUnitTestCase
 {
-    protected $loader;
-    protected $viewsDir;
-    protected $config;
+    private FileLocatorInterface $loader;
+    private string $viewsDir;
+    private ViewConfig $config;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->loader   = Services::locator();
-        $this->viewsDir = __DIR__ . '/Views';
-        $this->config   = new Config\View();
+        $this->loader                     = service('locator');
+        $this->viewsDir                   = __DIR__ . '/Views';
+        $this->config                     = new ViewConfig();
+        $this->config->appOverridesFolder = '';
     }
 
-    public function testSetVarStoresData()
+    public function testSetVarStoresData(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -44,7 +49,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertSame(['foo' => 'bar'], $view->getData());
     }
 
-    public function testSetVarOverwrites()
+    public function testSetVarOverwrites(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -54,7 +59,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertSame(['foo' => 'baz'], $view->getData());
     }
 
-    public function testSetDataStoresValue()
+    public function testSetDataStoresValue(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -68,7 +73,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertSame($expected, $view->getData());
     }
 
-    public function testSetDataMergesData()
+    public function testSetDataMergesData(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -87,7 +92,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertSame($expected, $view->getData());
     }
 
-    public function testSetDataOverwritesData()
+    public function testSetDataOverwritesData(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -105,7 +110,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertSame($expected, $view->getData());
     }
 
-    public function testSetVarWillEscape()
+    public function testSetVarWillEscape(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -114,7 +119,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertSame(['foo' => 'bar&amp;'], $view->getData());
     }
 
-    public function testSetDataWillEscapeAll()
+    public function testSetDataWillEscapeAll(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -131,7 +136,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertSame($expected, $view->getData());
     }
 
-    public function testRenderFindsView()
+    public function testRenderFindsView(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -141,7 +146,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertStringContainsString($expected, $view->render('simple'));
     }
 
-    public function testRenderString()
+    public function testRenderString(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -151,13 +156,34 @@ final class ViewTest extends CIUnitTestCase
         $this->assertSame($expected, $view->renderString('<h1><?= $testString ?></h1>'));
     }
 
-    public function testRenderStringNullTempdata()
+    public function testRenderStringViewDataCannotReplaceEvaluatedSource(): void
+    {
+        foreach ([false, true] as $saveData) {
+            $config           = clone $this->config;
+            $config->saveData = $saveData;
+            $view             = new View($config, $this->viewsDir, $this->loader);
+            $view->setVar('view', '<?php echo 6 * 7; ?>');
+
+            $this->assertSame('Trusted: &lt;?php echo 6 * 7; ?&gt;', $view->renderString('Trusted: <?= esc($view) ?>'));
+            $this->assertSame($saveData, array_key_exists('view', $view->getData()));
+        }
+    }
+
+    public function testRenderStringKeepsExistingViewVariableWhenNoDataOverridesIt(): void
+    {
+        $view   = new View($this->config, $this->viewsDir, $this->loader);
+        $source = '<?= $view ?>';
+
+        $this->assertSame($source, $view->renderString($source));
+    }
+
+    public function testRenderStringNullTempdata(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
         $this->assertSame('test string', $view->renderString('test string'));
     }
 
-    public function testRendersThrowsExceptionIfFileNotFound()
+    public function testRendersThrowsExceptionIfFileNotFound(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -167,7 +193,7 @@ final class ViewTest extends CIUnitTestCase
         $view->render('missing');
     }
 
-    public function testRenderScrapsData()
+    public function testRenderScrapsData(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -177,7 +203,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertEmpty($view->getData());
     }
 
-    public function testRenderCanSaveData()
+    public function testRenderCanSaveData(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -189,7 +215,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertSame($expected, $view->getData());
     }
 
-    public function testRenderCanSaveDataThroughConfigSetting()
+    public function testRenderCanSaveDataThroughConfigSetting(): void
     {
         $this->config->saveData = true;
 
@@ -203,7 +229,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertSame($expected, $view->getData());
     }
 
-    public function testCanDeleteData()
+    public function testCanDeleteData(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -215,7 +241,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertSame([], $view->getData());
     }
 
-    public function testCachedRender()
+    public function testCachedRender(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -227,7 +253,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertStringContainsString($expected, $view->render('simple', ['cache' => 10]));
     }
 
-    public function testRenderStringSavingData()
+    public function testRenderStringSavingData(): void
     {
         $view     = new View($this->config, $this->viewsDir, $this->loader);
         $expected = '<h1>Hello World</h1>';
@@ -242,7 +268,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertArrayHasKey('testString', $view->getData());
     }
 
-    public function testPerformanceLogging()
+    public function testPerformanceLogging(): void
     {
         // Make sure debugging is on for our view
         $view = new View($this->config, $this->viewsDir, $this->loader, true);
@@ -254,7 +280,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertCount(1, $view->getPerformanceData());
     }
 
-    public function testPerformanceNonLogging()
+    public function testPerformanceNonLogging(): void
     {
         // Make sure debugging is on for our view
         $view = new View($this->config, $this->viewsDir, $this->loader, false);
@@ -266,7 +292,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertCount(0, $view->getPerformanceData());
     }
 
-    public function testRenderLayoutExtendsCorrectly()
+    public function testRenderLayoutExtendsCorrectly(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -276,7 +302,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertStringContainsString($expected, $view->render('extend'));
     }
 
-    public function testRenderLayoutExtendsMultipleCalls()
+    public function testRenderLayoutExtendsMultipleCalls(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -288,7 +314,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertStringContainsString($expected, $view->render('extend'));
     }
 
-    public function testRenderLayoutMakesDataAvailableToBoth()
+    public function testRenderLayoutMakesDataAvailableToBoth(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -298,7 +324,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertStringContainsString($expected, $view->render('extend'));
     }
 
-    public function testRenderLayoutSupportsMultipleOfSameSection()
+    public function testRenderLayoutSupportsMultipleOfSameSection(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -308,7 +334,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertStringContainsString($expected, $view->render('extend_two'));
     }
 
-    public function testRenderLayoutWithInclude()
+    public function testRenderLayoutWithInclude(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -316,12 +342,12 @@ final class ViewTest extends CIUnitTestCase
 
         $content = $view->render('extend_include');
 
-        $this->assertTrue(strpos($content, '<p>Open</p>') !== false);
-        $this->assertTrue(strpos($content, '<h1>Hello World</h1>') !== false);
+        $this->assertStringContainsString('<p>Open</p>', $content);
+        $this->assertStringContainsString('<h1>Hello World</h1>', $content);
         $this->assertSame(2, substr_count($content, 'Hello World'));
     }
 
-    public function testRenderLayoutBroken()
+    public function testRenderLayoutBroken(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -332,7 +358,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertStringContainsString($expected, $view->render('broken'));
     }
 
-    public function testRenderLayoutNoContentSection()
+    public function testRenderLayoutNoContentSection(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -342,7 +368,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertStringContainsString($expected, $view->render('apples'));
     }
 
-    public function testRenderSaveDataCover()
+    public function testRenderSaveDataCover(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
         $this->setPrivateProperty($view, 'saveData', true);
@@ -351,7 +377,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertTrue($this->getPrivateProperty($view, 'saveData'));
     }
 
-    public function testRenderSaveDataUseAfterSaveDataFalse()
+    public function testRenderSaveDataUseAfterSaveDataFalse(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
         $view->setVar('testString', 'test');
@@ -360,7 +386,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertStringContainsString('<h1>test</h1>', $view->render('simple', null, false));
     }
 
-    public function testCachedAutoDiscoverAndRender()
+    public function testCachedAutoDiscoverAndRender(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -372,7 +398,7 @@ final class ViewTest extends CIUnitTestCase
         $this->assertStringContainsString($expected, $view->render('Nested/simple', ['cache' => 10]));
     }
 
-    public function testRenderNestedSections()
+    public function testRenderNestedSections(): void
     {
         $view = new View($this->config, $this->viewsDir, $this->loader);
 
@@ -383,5 +409,102 @@ final class ViewTest extends CIUnitTestCase
         $this->assertStringContainsString('<p>First</p>', $content);
         $this->assertStringContainsString('<p>Second</p>', $content);
         $this->assertStringContainsString('<p>Third</p>', $content);
+    }
+
+    public function testRenderSectionReturnsEmptyStringToNonExistentSection(): void
+    {
+        $view = new View($this->config, $this->viewsDir, $this->loader);
+
+        $this->assertSame('', $view->renderSection('does_not_exist'));
+    }
+
+    public function testRenderSectionSavingData(): void
+    {
+        $view     = new View($this->config, $this->viewsDir, $this->loader);
+        $expected = "<title>Welcome to CodeIgniter 4!</title>\n<h1>Welcome to CodeIgniter 4!</h1>\n<p>Hello World</p>";
+
+        $view->setVar('pageTitle', 'Welcome to CodeIgniter 4!');
+        $view->setVar('testString', 'Hello World');
+        $this->assertStringContainsString($expected, $view->render('extend_reuse_section'));
+    }
+
+    public function testViewExcerpt(): void
+    {
+        $view = new View($this->config, $this->viewsDir, $this->loader);
+
+        $this->assertSame('CodeIgniter is a PHP full-stack web framework...', $view->excerpt('CodeIgniter is a PHP full-stack web framework that is light, fast, flexible and secure.', 48));
+        $this->assertSame('CodeIgniter - это полнофункциональный веб-фреймворк...', $view->excerpt('CodeIgniter - это полнофункциональный веб-фреймворк на PHP, который является легким, быстрым, гибким и безопасным.', 54));
+    }
+
+    public function testRenderNamespacedViewPriorityToAppViews(): void
+    {
+        $loader = $this->createMock(FileLocatorInterface::class);
+        $loader->expects($this->never())->method('locateFile');
+
+        $view = new View($this->config, $this->viewsDir, $loader);
+
+        $view->setVar('testString', 'Hello World');
+        $expected = '<h1>Hello World</h1>';
+
+        $output = $view->render('Nested\simple');
+
+        $this->assertStringContainsString($expected, $output);
+    }
+
+    public function testRenderNamespacedViewFallsBackToLoader(): void
+    {
+        $namespacedView = 'Some\Library\View';
+
+        $realFile = $this->viewsDir . '/simple.php';
+
+        $loader = $this->createMock(FileLocatorInterface::class);
+        $loader->expects($this->once())
+            ->method('locateFile')
+            ->with($namespacedView . '.php', 'Views', 'php')
+            ->willReturn($realFile);
+
+        $view = new View($this->config, $this->viewsDir, $loader);
+
+        $view->setVar('testString', 'Hello World');
+        $output = $view->render($namespacedView);
+
+        $this->assertStringContainsString('<h1>Hello World</h1>', $output);
+    }
+
+    public function testRenderNamespacedViewWithExplicitExtension(): void
+    {
+        $namespacedView = 'Some\Library\View.html';
+
+        $realFile = $this->viewsDir . '/simple.php';
+
+        $loader = $this->createMock(FileLocatorInterface::class);
+        $loader->expects($this->once())
+            ->method('locateFile')
+            ->with($namespacedView, 'Views', 'html')
+            ->willReturn($realFile);
+
+        $view = new View($this->config, $this->viewsDir, $loader);
+        $view->setVar('testString', 'Hello World');
+
+        $view->render($namespacedView);
+    }
+
+    public function testOverrideWithCustomFolderChecksSubdirectory(): void
+    {
+        $this->config->appOverridesFolder = 'overrides';
+
+        $loader = $this->createMock(FileLocatorInterface::class);
+        $loader->expects($this->once())
+            ->method('locateFile')
+            ->with('Nested\simple.php', 'Views', 'php')
+            ->willReturn($this->viewsDir . '/simple.php');
+
+        $view = new View($this->config, $this->viewsDir, $loader);
+
+        $view->setVar('testString', 'Fallback Content');
+
+        $output = $view->render('Nested\simple');
+
+        $this->assertStringContainsString('<h1>Fallback Content</h1>', $output);
     }
 }

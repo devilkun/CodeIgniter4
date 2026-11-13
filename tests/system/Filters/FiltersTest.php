@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,8 +15,26 @@ namespace CodeIgniter\Filters;
 
 use CodeIgniter\Config\Services;
 use CodeIgniter\Filters\Exceptions\FilterException;
+use CodeIgniter\Filters\fixtures\GoogleCurious;
+use CodeIgniter\Filters\fixtures\GoogleEmpty;
+use CodeIgniter\Filters\fixtures\GoogleMe;
+use CodeIgniter\Filters\fixtures\GoogleYou;
+use CodeIgniter\Filters\fixtures\InvalidClass;
+use CodeIgniter\Filters\fixtures\Multiple1;
+use CodeIgniter\Filters\fixtures\Multiple2;
+use CodeIgniter\Filters\fixtures\Role;
+use CodeIgniter\HTTP\CLIRequest;
+use CodeIgniter\HTTP\RequestInterface;
+use CodeIgniter\HTTP\Response;
 use CodeIgniter\HTTP\ResponseInterface;
+use CodeIgniter\Superglobals;
 use CodeIgniter\Test\CIUnitTestCase;
+use CodeIgniter\Test\ConfigFromArrayTrait;
+use CodeIgniter\Test\Mock\MockAppConfig;
+use Config\Filters as FiltersConfig;
+use PHPUnit\Framework\Attributes\BackupGlobals;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 
 require_once __DIR__ . '/fixtures/GoogleMe.php';
 require_once __DIR__ . '/fixtures/GoogleYou.php';
@@ -26,121 +46,145 @@ require_once __DIR__ . '/fixtures/Multiple2.php';
 require_once __DIR__ . '/fixtures/Role.php';
 
 /**
- * @backupGlobals enabled
- *
  * @internal
  */
+#[BackupGlobals(true)]
+#[Group('Others')]
 final class FiltersTest extends CIUnitTestCase
 {
-    protected $request;
-    protected $response;
+    use ConfigFromArrayTrait;
+
+    private Response $response;
 
     protected function setUp(): void
     {
         parent::setUp();
-        Services::reset();
+
+        $this->resetServices();
 
         $defaults = [
             'Config'        => APPPATH . 'Config',
             'App'           => APPPATH,
             'Tests\Support' => TESTPATH . '_support',
         ];
+        service('autoloader')->addNamespace($defaults);
 
-        Services::autoloader()->addNamespace($defaults);
+        Services::injectMock('superglobals', new Superglobals());
 
-        $this->request  = Services::request();
-        $this->response = Services::response();
+        $response = service('response');
+        $this->assertInstanceOf(Response::class, $response);
+        $this->response = $response;
     }
 
-    public function testProcessMethodDetectsCLI()
+    private function createFilters(FiltersConfig $config, ?RequestInterface $request = null): Filters
     {
+        $request ??= service('request');
+
+        return new Filters($config, $request, $this->response);
+    }
+
+    public function testProcessMethodDetectsCLI(): void
+    {
+        service('superglobals')->setServer('argv', [
+            'spark',
+            'list',
+        ]);
+        service('superglobals')->setServer('argc', 2);
+
         $config = [
             'aliases' => ['foo' => ''],
+            'globals' => [],
             'methods' => [
-                'cli' => ['foo'],
+                'CLI' => ['foo'],
             ],
         ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters(
+            $filtersConfig,
+            new CLIRequest(new MockAppConfig()),
+        );
 
         $expected = [
             'before' => ['foo'],
             'after'  => [],
         ];
-
         $this->assertSame($expected, $filters->initialize()->getFilters());
     }
 
-    public function testProcessMethodDetectsGetRequests()
+    public function testProcessMethodDetectsGetRequests(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => ['foo' => ''],
+            'globals' => [],
             'methods' => [
-                'get' => ['foo'],
+                'GET' => ['foo'],
             ],
         ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
         $expected = [
             'before' => ['foo'],
             'after'  => [],
         ];
-
         $this->assertSame($expected, $filters->initialize()->getFilters());
     }
 
-    public function testProcessMethodRespectsMethod()
+    public function testProcessMethodRespectsMethod(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
                 'foo' => '',
                 'bar' => '',
             ],
+            'globals' => [],
             'methods' => [
-                'post' => ['foo'],
-                'get'  => ['bar'],
+                'POST' => ['foo'],
+                'GET'  => ['bar'],
             ],
         ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
         $expected = [
             'before' => ['bar'],
             'after'  => [],
         ];
-
         $this->assertSame($expected, $filters->initialize()->getFilters());
     }
 
-    public function testProcessMethodIgnoresMethod()
+    public function testProcessMethodIgnoresMethod(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'DELETE';
+        service('superglobals')->setServer('REQUEST_METHOD', 'DELETE');
 
         $config = [
             'aliases' => [
                 'foo' => '',
                 'bar' => '',
             ],
+            'globals' => [],
             'methods' => [
-                'post' => ['foo'],
-                'get'  => ['bar'],
+                'POST' => ['foo'],
+                'GET'  => ['bar'],
             ],
         ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
         $expected = [
             'before' => [],
             'after'  => [],
         ];
-
         $this->assertSame($expected, $filters->initialize()->getFilters());
     }
 
-    public function testProcessMethodProcessGlobals()
+    public function testProcessMethodProcessGlobals(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
@@ -158,8 +202,8 @@ final class FiltersTest extends CIUnitTestCase
                 ],
             ],
         ];
-
-        $filters = new Filters((object) $config, $this->request, $this->response);
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
         $expected = [
             'before' => [
@@ -168,28 +212,16 @@ final class FiltersTest extends CIUnitTestCase
             ],
             'after' => ['baz'],
         ];
-
         $this->assertSame($expected, $filters->initialize()->getFilters());
     }
 
-    public function provideExcept()
-    {
-        return [
-            [
-                ['admin/*'],
-            ],
-            [
-                [],
-            ],
-        ];
-    }
-
     /**
-     * @dataProvider provideExcept
+     * @param list<string>|string $except
      */
-    public function testProcessMethodProcessGlobalsWithExcept(array $except)
+    #[DataProvider('provideProcessMethodProcessGlobalsWithExcept')]
+    public function testProcessMethodProcessGlobalsWithExcept(array|string $except): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
@@ -207,22 +239,43 @@ final class FiltersTest extends CIUnitTestCase
                 ],
             ],
         ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin/foo/bar';
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
+        $uri      = 'admin/foo/bar';
         $expected = [
             'before' => [
                 'bar',
             ],
             'after' => ['baz'],
         ];
-
         $this->assertSame($expected, $filters->initialize($uri)->getFilters());
     }
 
-    public function testProcessMethodProcessesFiltersBefore()
+    /**
+     * @return iterable<array{list<string>|string}>
+     */
+    public static function provideProcessMethodProcessGlobalsWithExcept(): iterable
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        return [
+            [
+                ['admin/*'],
+            ],
+            [
+                ['admin/*', 'foo/*'],
+            ],
+            [
+                ['*'],
+            ],
+            [
+                'admin/*',
+            ],
+        ];
+    }
+
+    public function testProcessMethodProcessesFiltersBefore(): void
+    {
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
@@ -230,27 +283,32 @@ final class FiltersTest extends CIUnitTestCase
                 'bar' => '',
                 'baz' => '',
             ],
+            'globals' => [],
             'filters' => [
                 'foo' => [
                     'before' => ['admin/*'],
                     'after'  => ['/users/*'],
                 ],
+                'bar: arg1, arg2' => [
+                    'before' => ['admin/*'],
+                    'after'  => ['/users/*'],
+                ],
             ],
         ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin/foo/bar';
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
+        $uri      = 'admin/foo/bar';
         $expected = [
-            'before' => ['foo'],
+            'before' => ['foo', 'bar:arg1,arg2'],
             'after'  => [],
         ];
-
         $this->assertSame($expected, $filters->initialize($uri)->getFilters());
     }
 
-    public function testProcessMethodProcessesFiltersAfter()
+    public function testProcessMethodProcessesFiltersAfter(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
@@ -258,29 +316,32 @@ final class FiltersTest extends CIUnitTestCase
                 'bar' => '',
                 'baz' => '',
             ],
+            'globals' => [],
             'filters' => [
                 'foo' => [
                     'before' => ['admin/*'],
                     'after'  => ['/users/*'],
                 ],
+                'bar: arg1, arg2' => [
+                    'before' => ['admin/*'],
+                    'after'  => ['/users/*'],
+                ],
             ],
         ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'users/foo/bar';
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
+        $uri      = 'users/foo/bar';
         $expected = [
             'before' => [],
-            'after'  => [
-                'foo',
-            ],
+            'after'  => ['bar:arg1,arg2', 'foo'],
         ];
-
         $this->assertSame($expected, $filters->initialize($uri)->getFilters());
     }
 
-    public function testProcessMethodProcessesCombined()
+    public function testProcessMethodProcessesCombined(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
@@ -301,8 +362,8 @@ final class FiltersTest extends CIUnitTestCase
                 ],
             ],
             'methods' => [
-                'post' => ['foo'],
-                'get'  => ['bar'],
+                'POST' => ['foo'],
+                'GET'  => ['bar'],
             ],
             'filters' => [
                 'foof' => [
@@ -311,9 +372,10 @@ final class FiltersTest extends CIUnitTestCase
                 ],
             ],
         ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin/foo/bar';
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
+        $uri      = 'admin/foo/bar';
         $expected = [
             'before' => [
                 'barg',
@@ -322,13 +384,12 @@ final class FiltersTest extends CIUnitTestCase
             ],
             'after' => ['bazg'],
         ];
-
         $this->assertSame($expected, $filters->initialize($uri)->getFilters());
     }
 
-    public function testProcessMethodProcessesCombinedAfterForToolbar()
+    public function testProcessMethodProcessesCombinedAfterForToolbar(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
@@ -344,7 +405,7 @@ final class FiltersTest extends CIUnitTestCase
                 ],
             ],
             'methods' => [
-                'get' => ['bar'],
+                'GET' => ['bar'],
             ],
             'filters' => [
                 'foof' => [
@@ -352,24 +413,24 @@ final class FiltersTest extends CIUnitTestCase
                 ],
             ],
         ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin/foo/bar';
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
+        $uri      = 'admin/foo/bar';
         $expected = [
             'before' => ['bar'],
             'after'  => [
-                'bazg',
                 'foof',
+                'bazg',
                 'toolbar',
             ],
         ];
-
         $this->assertSame($expected, $filters->initialize($uri)->getFilters());
     }
 
-    public function testRunThrowsWithInvalidAlias()
+    public function testRunThrowsWithInvalidAlias(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [],
@@ -378,18 +439,18 @@ final class FiltersTest extends CIUnitTestCase
                 'after'  => [],
             ],
         ];
-
-        $filters = new Filters((object) $config, $this->request, $this->response);
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
         $this->expectException(FilterException::class);
-        $uri = 'admin/foo/bar';
 
+        $uri = 'admin/foo/bar';
         $filters->run($uri);
     }
 
-    public function testCustomFiltersLoad()
+    public function testCustomFiltersLoad(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [],
@@ -398,103 +459,124 @@ final class FiltersTest extends CIUnitTestCase
                 'after'  => [],
             ],
         ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
         $uri     = 'admin/foo/bar';
-
         $request = $filters->run($uri, 'before');
 
-        $this->assertSame('http://hellowworld.com', $request->url);
+        $this->assertSame('http://hellowworld.com', $request->getBody());
+
+        $this->resetServices();
     }
 
-    public function testRunThrowsWithInvalidClassType()
+    /**
+     * @see https://github.com/codeigniter4/CodeIgniter4/issues/4720
+     */
+    public function testAllCustomFiltersAreDiscoveredInConstructor(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
-            'aliases' => ['invalid' => 'CodeIgniter\Filters\fixtures\InvalidClass'],
+            'aliases' => [],
+            'globals' => [],
+        ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
+
+        $configFilters = $this->getPrivateProperty($filters, 'config');
+        $this->assertContains('test-customfilter', array_keys($configFilters->aliases));
+    }
+
+    public function testRunThrowsWithInvalidClassType(): void
+    {
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
+
+        $config = [
+            'aliases' => ['invalid' => InvalidClass::class],
             'globals' => [
                 'before' => ['invalid'],
                 'after'  => [],
             ],
         ];
-
-        $filters = new Filters((object) $config, $this->request, $this->response);
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
         $this->expectException(FilterException::class);
-        $uri = 'admin/foo/bar';
 
+        $uri = 'admin/foo/bar';
         $filters->run($uri);
     }
 
-    public function testRunDoesBefore()
+    public function testRunDoesBefore(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
-            'aliases' => ['google' => 'CodeIgniter\Filters\fixtures\GoogleMe'],
+            'aliases' => ['google' => GoogleMe::class],
             'globals' => [
                 'before' => ['google'],
                 'after'  => [],
             ],
         ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
         $uri     = 'admin/foo/bar';
-
         $request = $filters->run($uri, 'before');
 
-        $this->assertSame('http://google.com', $request->url);
+        $this->assertSame('http://google.com', $request->getBody());
     }
 
-    public function testRunDoesAfter()
+    public function testRunDoesAfter(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
-            'aliases' => ['google' => 'CodeIgniter\Filters\fixtures\GoogleMe'],
+            'aliases' => ['google' => GoogleMe::class],
             'globals' => [
                 'before' => [],
                 'after'  => ['google'],
             ],
         ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin/foo/bar';
-
+        $uri      = 'admin/foo/bar';
         $response = $filters->run($uri, 'after');
 
-        $this->assertSame('http://google.com', $response->csp);
+        $this->assertSame('http://google.com', $response->getBody());
     }
 
-    public function testShortCircuit()
+    public function testShortCircuit(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
-            'aliases' => ['banana' => 'CodeIgniter\Filters\fixtures\GoogleYou'],
+            'aliases' => ['banana' => GoogleYou::class],
             'globals' => [
                 'before' => ['banana'],
                 'after'  => [],
             ],
         ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin/foo/bar';
-
+        $uri      = 'admin/foo/bar';
         $response = $filters->run($uri, 'before');
-        $this->assertTrue($response instanceof ResponseInterface);
-        $this->assertSame('http://google.com', $response->csp);
+
+        $this->assertInstanceOf(ResponseInterface::class, $response);
+        $this->assertSame('http://google.com', $response->getBody());
     }
 
-    public function testOtherResult()
+    public function testOtherResult(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
-                'nowhere' => 'CodeIgniter\Filters\fixtures\GoogleEmpty',
-                'banana'  => 'CodeIgniter\Filters\fixtures\GoogleCurious',
+                'nowhere' => GoogleEmpty::class,
+                'banana'  => GoogleCurious::class,
             ],
             'globals' => [
                 'before' => [
@@ -504,18 +586,23 @@ final class FiltersTest extends CIUnitTestCase
                 'after' => [],
             ],
         ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin/foo/bar';
-
+        $uri      = 'admin/foo/bar';
         $response = $filters->run($uri, 'before');
 
         $this->assertSame('This is curious', $response);
     }
 
-    public function testBeforeExceptString()
+    /**
+     * @param list<string>|string                              $except
+     * @param array{before: list<string>, after: list<string>} $expected
+     */
+    #[DataProvider('provideBeforeExcept')]
+    public function testBeforeExcept(string $uri, array|string $except, array $expected): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
@@ -525,97 +612,143 @@ final class FiltersTest extends CIUnitTestCase
             ],
             'globals' => [
                 'before' => [
+                    'foo' => ['except' => $except],
+                    'bar',
+                ],
+                'after' => [
+                    'baz',
+                ],
+            ],
+        ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
+
+        $this->assertSame($expected, $filters->initialize($uri)->getFilters());
+    }
+
+    /**
+     * @return iterable<string, array{string, list<string>|string, array{before: list<string>, after: list<string>}}>
+     */
+    public static function provideBeforeExcept(): iterable
+    {
+        return [
+            'string exclude' => [
+                'admin/foo/bar',
+                'admin/*',
+                [
+                    'before' => [
+                        'bar',
+                    ],
+                    'after' => ['baz'],
+                ],
+            ],
+            'string not exclude' => [
+                'admin/foo/bar',
+                'george/*',
+                [
+                    'before' => [
+                        'foo',
+                        'bar',
+                    ],
+                    'after' => ['baz'],
+                ],
+            ],
+            'empty array not exclude' => [
+                'admin/foo/bar',
+                [],
+                [
+                    'before' => [
+                        'foo',
+                        'bar',
+                    ],
+                    'after' => ['baz'],
+                ],
+            ],
+            'empty string not exclude' => [
+                'admin/foo/bar',
+                // The URI path '' means the baseURL.
+                '',
+                [
+                    'before' => [
+                        'foo',
+                        'bar',
+                    ],
+                    'after' => ['baz'],
+                ],
+            ],
+            'empty string exclude' => [
+                // The URI path '' means the baseURL.
+                '',
+                // So this setting excludes `foo` filter only to the baseURL.
+                '',
+                [
+                    'before' => [
+                        'bar',
+                    ],
+                    'after' => ['baz'],
+                ],
+            ],
+            'slash not exclude' => [
+                'admin/foo/bar',
+                '/',
+                [
+                    'before' => [
+                        'foo',
+                        'bar',
+                    ],
+                    'after' => ['baz'],
+                ],
+            ],
+            'slash exclude' => [
+                // The URI path '' means the baseURL.
+                '',
+                '/',
+                [
+                    'before' => [
+                        'bar',
+                    ],
+                    'after' => ['baz'],
+                ],
+            ],
+        ];
+    }
+
+    public function testAfterExceptString(): void
+    {
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
+
+        $config = [
+            'aliases' => [
+                'foo' => '',
+                'bar' => '',
+                'baz' => '',
+            ],
+            'globals' => [
+                'before' => [
+                    'bar',
+                ],
+                'after' => [
                     'foo' => ['except' => 'admin/*'],
-                    'bar',
-                ],
-                'after' => [
                     'baz',
                 ],
             ],
         ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin/foo/bar';
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
+        $uri      = 'admin/foo/bar';
         $expected = [
             'before' => [
                 'bar',
             ],
             'after' => ['baz'],
         ];
-
         $this->assertSame($expected, $filters->initialize($uri)->getFilters());
     }
 
-    public function testBeforeExceptInapplicable()
+    public function testAfterExceptInapplicable(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
-
-        $config = [
-            'aliases' => [
-                'foo' => '',
-                'bar' => '',
-                'baz' => '',
-            ],
-            'globals' => [
-                'before' => [
-                    'foo' => ['except' => 'george/*'],
-                    'bar',
-                ],
-                'after' => [
-                    'baz',
-                ],
-            ],
-        ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin/foo/bar';
-
-        $expected = [
-            'before' => [
-                'foo',
-                'bar',
-            ],
-            'after' => ['baz'],
-        ];
-
-        $this->assertSame($expected, $filters->initialize($uri)->getFilters());
-    }
-
-    public function testAfterExceptString()
-    {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
-
-        $config = [
-            'aliases' => [
-                'foo' => '',
-                'bar' => '',
-                'baz' => '',
-            ],
-            'globals' => [
-                'before' => [
-                    'bar',
-                ],
-                'after' => [
-                    'foo' => ['except' => 'admin/*'],
-                    'baz',
-                ],
-            ],
-        ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin/foo/bar';
-
-        $expected = [
-            'before' => [
-                'bar',
-            ],
-            'after' => ['baz'],
-        ];
-
-        $this->assertSame($expected, $filters->initialize($uri)->getFilters());
-    }
-
-    public function testAfterExceptInapplicable()
-    {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
@@ -633,9 +766,10 @@ final class FiltersTest extends CIUnitTestCase
                 ],
             ],
         ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin/foo/bar';
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
+        $uri      = 'admin/foo/bar';
         $expected = [
             'before' => [
                 'bar',
@@ -645,179 +779,250 @@ final class FiltersTest extends CIUnitTestCase
                 'baz',
             ],
         ];
-
         $this->assertSame($expected, $filters->initialize($uri)->getFilters());
     }
 
-    public function testAddFilter()
+    public function testAddFilter(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
-            'aliases' => ['google' => 'CodeIgniter\Filters\fixtures\GoogleMe'],
+            'aliases' => ['google' => GoogleMe::class],
             'globals' => [
                 'before' => ['google'],
                 'after'  => [],
             ],
         ];
-
-        $filters = new Filters((object) $config, $this->request, $this->response);
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
         $filters = $filters->addFilter('Some\Class', 'some_alias');
-
         $filters = $filters->initialize('admin/foo/bar');
-
         $filters = $filters->getFilters();
 
-        $this->assertTrue(in_array('some_alias', $filters['before'], true));
+        $this->assertContains('some_alias', $filters['before']);
     }
 
-    public function testAddFilterSection()
+    public function testAddFilterSection(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
-        $config = [];
+        $config        = [];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
-
-        $filters = $filters
-            ->addFilter('Some\OtherClass', 'another', 'before', 'globals')
-            ->initialize('admin/foo/bar');
-
-        $list = $filters->getFilters();
-
-        $this->assertTrue(in_array('another', $list['before'], true));
-    }
-
-    public function testInitializeTwice()
-    {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
-
-        $config = [];
-
-        $filters = new Filters((object) $config, $this->request, $this->response);
-
-        $filters = $filters
+        $list = $filters
             ->addFilter('Some\OtherClass', 'another', 'before', 'globals')
             ->initialize('admin/foo/bar')
-            ->initialize();
+            ->getFilters();
 
-        $list = $filters->getFilters();
-
-        $this->assertTrue(in_array('another', $list['before'], true));
+        $this->assertContains('another', $list['before']);
     }
 
-    public function testEnableFilter()
+    public function testInitializeTwice(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
+
+        $config        = [];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
+
+        $list = $filters
+            ->addFilter('Some\OtherClass', 'another', 'before', 'globals')
+            ->initialize('admin/foo/bar')
+            ->initialize()
+            ->getFilters();
+
+        $this->assertContains('another', $list['before']);
+    }
+
+    public function testEnableFilter(): void
+    {
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
-            'aliases' => ['google' => 'CodeIgniter\Filters\fixtures\GoogleMe'],
+            'aliases' => ['google' => GoogleMe::class],
             'globals' => [
                 'before' => [],
                 'after'  => [],
             ],
         ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
-
+        $filters->enableFilters(['google'], 'before');
         $filters = $filters->initialize('admin/foo/bar');
-
-        $filters->enableFilter('google', 'before');
-
         $filters = $filters->getFilters();
 
-        $this->assertTrue(in_array('google', $filters['before'], true));
+        $this->assertContains('google', $filters['before']);
     }
 
-    public function testEnableFilterWithArguments()
+    public function testFiltersWithArguments(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
-            'aliases' => ['role' => 'CodeIgniter\Filters\fixtures\Role'],
-            'globals' => [
-                'before' => [],
-                'after'  => [],
+            'aliases' => ['role' => Role::class],
+            'globals' => [],
+            'filters' => [
+                'role:admin,super' => [
+                    'before' => ['admin/*'],
+                    'after'  => ['admin/*'],
+                ],
             ],
         ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
         $filters = $filters->initialize('admin/foo/bar');
+        $found   = $filters->getFilters();
 
-        $filters->enableFilter('role:admin , super', 'before');
-        $filters->enableFilter('role:admin , super', 'after');
-
-        $found = $filters->getFilters();
-
-        $this->assertTrue(in_array('role', $found['before'], true));
-        $this->assertSame(['admin', 'super'], $filters->getArguments('role'));
-        $this->assertSame(['role' => ['admin', 'super']], $filters->getArguments());
+        $this->assertContains('role:admin,super', $found['before']);
 
         $response = $filters->run('admin/foo/bar', 'before');
+
         $this->assertSame('admin;super', $response);
 
         $response = $filters->run('admin/foo/bar', 'after');
+
         $this->assertSame('admin;super', $response->getBody());
     }
 
-    public function testEnableFilterWithNoArguments()
+    public function testFilterWithDiffernetArguments(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
-            'aliases' => ['role' => 'CodeIgniter\Filters\fixtures\Role'],
+            'aliases' => ['role' => Role::class],
+            'globals' => [],
+            'filters' => [
+                'role:admin,super' => [
+                    'before' => ['admin/*'],
+                ],
+                'role:super' => [
+                    'before' => ['admin/user/*'],
+                ],
+            ],
+        ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
+
+        $filters->initialize('admin/user/bar');
+        $found = $filters->getFilters();
+
+        $this->assertContains('role:admin,super', $found['before']);
+        $this->assertContains('role:super', $found['before']);
+    }
+
+    public function testFilterWithoutArgumentsIsDefined(): void
+    {
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
+
+        $config = [
+            'aliases' => ['role' => Role::class],
+            'globals' => [],
+            'filters' => [
+                'role' => [
+                    'before' => ['admin/*'],
+                ],
+                'role:super' => [
+                    'before' => ['admin/user/*'],
+                ],
+            ],
+        ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
+
+        $filters = $filters->initialize('admin/user/bar');
+        $found   = $filters->getFilters();
+
+        $this->assertContains('role', $found['before']);
+    }
+
+    public function testEnableFilterWithArguments(): void
+    {
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
+
+        $config = [
+            'aliases' => ['role' => Role::class],
             'globals' => [
                 'before' => [],
                 'after'  => [],
             ],
         ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
-
-        $filters = $filters->initialize('admin/foo/bar');
-
-        $filters->enableFilter('role', 'before');
-        $filters->enableFilter('role', 'after');
-
+        $filters->enableFilters(['role:admin , super'], 'before');
+        $filters->enableFilters(['role:admin , super'], 'after');
         $found = $filters->getFilters();
 
-        $this->assertTrue(in_array('role', $found['before'], true));
+        $this->assertContains('role:admin,super', $found['before']);
 
         $response = $filters->run('admin/foo/bar', 'before');
+
+        $this->assertSame('admin;super', $response);
+
+        $response = $filters->run('admin/foo/bar', 'after');
+
+        $this->assertSame('admin;super', $response->getBody());
+    }
+
+    public function testEnableFilterWithNoArguments(): void
+    {
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
+
+        $config = [
+            'aliases' => ['role' => Role::class],
+            'globals' => [
+                'before' => [],
+                'after'  => [],
+            ],
+        ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
+
+        $filters->enableFilters(['role'], 'before');
+        $filters->enableFilters(['role'], 'after');
+        $found = $filters->getFilters();
+
+        $this->assertContains('role', $found['before']);
+
+        $response = $filters->run('admin/foo/bar', 'before');
+
         $this->assertSame('Is null', $response);
 
         $response = $filters->run('admin/foo/bar', 'after');
+
         $this->assertSame('Is null', $response->getBody());
     }
 
-    public function testEnableNonFilter()
+    public function testEnableNonFilter(): void
     {
-        $this->expectException('CodeIgniter\Filters\Exceptions\FilterException');
+        $this->expectException(FilterException::class);
 
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
-            'aliases' => ['google' => 'CodeIgniter\Filters\fixtures\GoogleMe'],
+            'aliases' => ['google' => GoogleMe::class],
             'globals' => [
                 'before' => [],
                 'after'  => [],
             ],
         ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
-
-        $filters = $filters->initialize('admin/foo/bar');
-
-        $filters->enableFilter('goggle', 'before');
+        $filters->enableFilters(['goggle'], 'before');
+        $filters->initialize('admin/foo/bar');
     }
 
     /**
      * @see https://github.com/codeigniter4/CodeIgniter4/issues/1664
      */
-    public function testMatchesURICaseInsensitively()
+    public function testMatchesURICaseInsensitively(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
@@ -843,29 +1048,75 @@ final class FiltersTest extends CIUnitTestCase
                 ],
             ],
         ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin/foo/bar';
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
+        $uri      = 'admin/foo/bar';
         $expected = [
             'before' => [
                 'bar',
                 'frak',
             ],
             'after' => [
-                'baz',
                 'frak',
+                'baz',
             ],
         ];
+        $this->assertSame($expected, $filters->initialize($uri)->getFilters());
+    }
 
+    public function testMatchesURIWithUnicode(): void
+    {
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
+
+        $config = [
+            'aliases' => [
+                'foo'  => '',
+                'bar'  => '',
+                'frak' => '',
+                'baz'  => '',
+            ],
+            'globals' => [
+                'before' => [
+                    'foo' => ['except' => '日本語/*'],
+                    'bar',
+                ],
+                'after' => [
+                    'foo' => ['except' => '日本語/*'],
+                    'baz',
+                ],
+            ],
+            'filters' => [
+                'frak' => [
+                    'before' => ['日本語/*'],
+                    'after'  => ['日本語/*'],
+                ],
+            ],
+        ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
+
+        // URIs passed to Filters are URL-encoded.
+        $uri      = '%E6%97%A5%E6%9C%AC%E8%AA%9E/foo/bar';
+        $expected = [
+            'before' => [
+                'bar',
+                'frak',
+            ],
+            'after' => [
+                'frak',
+                'baz',
+            ],
+        ];
         $this->assertSame($expected, $filters->initialize($uri)->getFilters());
     }
 
     /**
      * @see https://github.com/codeigniter4/CodeIgniter4/issues/1907
      */
-    public function testFilterMatching()
+    public function testFilterMatching(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
@@ -873,6 +1124,7 @@ final class FiltersTest extends CIUnitTestCase
                 'bar'  => '',
                 'frak' => '',
             ],
+            'globals' => [],
             'filters' => [
                 'frak' => [
                     'before' => ['admin*'],
@@ -880,9 +1132,11 @@ final class FiltersTest extends CIUnitTestCase
                 ],
             ],
         ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin';
+        $uri    = 'admin';
+        $actual = $filters->initialize($uri)->getFilters();
 
         $expected = [
             'before' => [
@@ -890,17 +1144,15 @@ final class FiltersTest extends CIUnitTestCase
             ],
             'after' => [],
         ];
-
-        $actual = $filters->initialize($uri)->getFilters();
         $this->assertSame($expected, $actual);
     }
 
     /**
      * @see https://github.com/codeigniter4/CodeIgniter4/issues/1907
      */
-    public function testGlobalFilterMatching()
+    public function testGlobalFilterMatching(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
@@ -919,9 +1171,11 @@ final class FiltersTest extends CIUnitTestCase
                 ],
             ],
         ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin';
+        $uri    = 'admin';
+        $actual = $filters->initialize($uri)->getFilters();
 
         $expected = [
             'before' => [
@@ -932,17 +1186,15 @@ final class FiltersTest extends CIUnitTestCase
                 'two',
             ],
         ];
-
-        $actual = $filters->initialize($uri)->getFilters();
         $this->assertSame($expected, $actual);
     }
 
     /**
      * @see https://github.com/codeigniter4/CodeIgniter4/issues/1907
      */
-    public function testCombinedFilterMatching()
+    public function testCombinedFilterMatching(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
@@ -968,10 +1220,10 @@ final class FiltersTest extends CIUnitTestCase
                 ],
             ],
         ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin123';
-
+        $uri      = 'admin123';
         $expected = [
             'before' => [
                 'one',
@@ -982,16 +1234,15 @@ final class FiltersTest extends CIUnitTestCase
                 'two',
             ],
         ];
-
         $this->assertSame($expected, $filters->initialize($uri)->getFilters());
     }
 
     /**
      * @see https://github.com/codeigniter4/CodeIgniter4/issues/1907
      */
-    public function testSegmentedFilterMatching()
+    public function testSegmentedFilterMatching(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
@@ -1014,10 +1265,10 @@ final class FiltersTest extends CIUnitTestCase
                 ],
             ],
         ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin/123';
-
+        $uri      = 'admin/123';
         $expected = [
             'before' => [
                 'frak',
@@ -1026,43 +1277,44 @@ final class FiltersTest extends CIUnitTestCase
                 'frak',
             ],
         ];
-
         $this->assertSame($expected, $filters->initialize($uri)->getFilters());
     }
 
     /**
      * @see https://github.com/codeigniter4/CodeIgniter4/issues/2831
      */
-    public function testFilterAlitasMultiple()
-    {
-        $config = [
-            'aliases' => [
-                'multipeTest' => [
-                    'CodeIgniter\Filters\fixtures\Multiple1',
-                    'CodeIgniter\Filters\fixtures\Multiple2',
-                ],
-            ],
-            'globals' => [
-                'before' => [
-                    'multipeTest',
-                ],
-            ],
-        ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin/foo/bar';
-
-        $request = $filters->run($uri, 'before');
-        $this->assertSame('http://exampleMultipleURL.com', $request->url);
-        $this->assertSame('http://exampleMultipleCSP.com', $request->csp);
-    }
-
-    public function testFilterClass()
+    public function testFilterAliasMultiple(): void
     {
         $config = [
             'aliases' => [
                 'multipleTest' => [
-                    'CodeIgniter\Filters\fixtures\Multiple1',
-                    'CodeIgniter\Filters\fixtures\Multiple2',
+                    Multiple1::class,
+                    Multiple2::class,
+                ],
+            ],
+            'globals' => [
+                'before' => [
+                    'multipleTest',
+                ],
+            ],
+        ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
+
+        $uri     = 'admin/foo/bar';
+        $request = $filters->run($uri, 'before');
+
+        $this->assertSame('http://exampleMultipleURL.com', $request->header('x-url')->getValue());
+        $this->assertSame('http://exampleMultipleCSP.com', $request->header('x-csp')->getValue());
+    }
+
+    public function testFilterClass(): void
+    {
+        $config = [
+            'aliases' => [
+                'multipleTest' => [
+                    Multiple1::class,
+                    Multiple2::class,
                 ],
             ],
             'globals' => [
@@ -1071,38 +1323,79 @@ final class FiltersTest extends CIUnitTestCase
                 ],
             ],
         ];
-        $filters = new Filters((object) $config, $this->request, $this->response);
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
         $filters->run('admin/foo/bar', 'before');
+
         $expected = [
             'before' => [],
             'after'  => [
-                'CodeIgniter\Filters\fixtures\Multiple1',
-                'CodeIgniter\Filters\fixtures\Multiple2',
+                [Multiple1::class, []],
+                [Multiple2::class, []],
             ],
         ];
         $this->assertSame($expected, $filters->getFiltersClass());
     }
 
-    public function testReset()
+    public function testReset(): void
     {
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
 
         $config = [
             'aliases' => [
                 'foo' => '',
             ],
+            'globals' => [],
             'filters' => [
                 'foo' => [
                     'before' => ['admin*'],
                 ],
             ],
         ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
 
-        $filters = new Filters((object) $config, $this->request, $this->response);
-        $uri     = 'admin';
-
+        $uri = 'admin';
         $this->assertSame(['foo'], $filters->initialize($uri)->getFilters()['before']);
         $this->assertSame([], $filters->reset()->getFilters()['before']);
+    }
+
+    public function testRunRequiredDoesBefore(): void
+    {
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
+
+        $config = [
+            'aliases'  => ['google' => GoogleMe::class],
+            'required' => [
+                'before' => ['google'],
+                'after'  => [],
+            ],
+        ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
+
+        $request = $filters->runRequired('before');
+
+        $this->assertSame('http://google.com', $request->getBody());
+    }
+
+    public function testRunRequiredDoesAfter(): void
+    {
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
+
+        $config = [
+            'aliases'  => ['google' => GoogleMe::class],
+            'required' => [
+                'before' => [],
+                'after'  => ['google'],
+            ],
+        ];
+        $filtersConfig = $this->createConfigFromArray(FiltersConfig::class, $config);
+        $filters       = $this->createFilters($filtersConfig);
+
+        $response = $filters->runRequired('after');
+
+        $this->assertSame('http://google.com', $response->getBody());
     }
 }

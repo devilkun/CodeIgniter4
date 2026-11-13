@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -15,29 +17,28 @@ use CodeIgniter\Model;
 
 class EventModel extends Model
 {
-    protected $table = 'user';
-
-    protected $returnType = 'array';
-
+    protected $table          = 'user';
+    protected $returnType     = 'array';
     protected $useSoftDeletes = false;
-
-    protected $dateFormat = 'datetime';
-
-    protected $allowedFields = [
+    protected $dateFormat     = 'datetime';
+    protected $allowedFields  = [
         'name',
         'email',
         'country',
         'deleted_at',
     ];
-
-    protected $beforeInsert = ['beforeInsertMethod'];
-    protected $afterInsert  = ['afterInsertMethod'];
-    protected $beforeUpdate = ['beforeUpdateMethod'];
-    protected $afterUpdate  = ['afterUpdateMethod'];
-    protected $beforeDelete = ['beforeDeleteMethod'];
-    protected $afterDelete  = ['afterDeleteMethod'];
-    protected $beforeFind   = ['beforeFindMethod'];
-    protected $afterFind    = ['afterFindMethod'];
+    protected $beforeInsert      = ['beforeInsertMethod'];
+    protected $afterInsert       = ['afterInsertMethod'];
+    protected $beforeInsertBatch = ['beforeInsertBatchMethod'];
+    protected $afterInsertBatch  = ['afterInsertBatchMethod'];
+    protected $beforeUpdate      = ['beforeUpdateMethod'];
+    protected $afterUpdate       = ['afterUpdateMethod'];
+    protected $beforeUpdateBatch = ['beforeUpdateBatchMethod'];
+    protected $afterUpdateBatch  = ['afterUpdateBatchMethod'];
+    protected $beforeDelete      = ['beforeDeleteMethod'];
+    protected $afterDelete       = ['afterDeleteMethod'];
+    protected $beforeFind        = ['beforeFindMethod'];
+    protected $afterFind         = ['afterFindMethod'];
 
     // Cache of the most recent eventData from a trigger
     public $eventData;
@@ -64,6 +65,22 @@ class EventModel extends Model
         return $data;
     }
 
+    protected function beforeInsertBatchMethod(array $data)
+    {
+        $this->tokens[]  = 'beforeInsertBatch';
+        $this->eventData = $data;
+
+        return $data;
+    }
+
+    protected function afterInsertBatchMethod(array $data)
+    {
+        $this->tokens[]  = 'afterInsertBatch';
+        $this->eventData = $data;
+
+        return $data;
+    }
+
     protected function beforeUpdateMethod(array $data)
     {
         $this->tokens[]  = 'beforeUpdate';
@@ -75,6 +92,22 @@ class EventModel extends Model
     protected function afterUpdateMethod(array $data)
     {
         $this->tokens[]  = 'afterUpdate';
+        $this->eventData = $data;
+
+        return $data;
+    }
+
+    protected function beforeUpdateBatchMethod(array $data)
+    {
+        $this->tokens[]  = 'beforeUpdateBatch';
+        $this->eventData = $data;
+
+        return $data;
+    }
+
+    protected function afterUpdateBatchMethod(array $data)
+    {
+        $this->tokens[]  = 'afterUpdateBatch';
         $this->eventData = $data;
 
         return $data;
@@ -96,6 +129,9 @@ class EventModel extends Model
         return $data;
     }
 
+    /**
+     * @param array<string, mixed> $data
+     */
     protected function beforeFindMethod(array $data)
     {
         $this->tokens[]  = 'beforeFind';

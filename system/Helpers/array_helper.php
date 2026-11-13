@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -9,6 +11,8 @@
  * the LICENSE file that was distributed with this source code.
  */
 
+use CodeIgniter\Helpers\Array\ArrayHelper;
+
 // CodeIgniter Array Helpers
 
 if (! function_exists('dot_array_search')) {
@@ -16,75 +20,11 @@ if (! function_exists('dot_array_search')) {
      * Searches an array through dot syntax. Supports
      * wildcard searches, like foo.*.bar
      *
-     * @return mixed
+     * @param array<array-key, mixed> $array
      */
-    function dot_array_search(string $index, array $array)
+    function dot_array_search(string $index, array $array): mixed
     {
-        $segments = preg_split('/(?<!\\\)\./', rtrim($index, '* '), 0, PREG_SPLIT_NO_EMPTY);
-
-        $segments = array_map(static function ($key) {
-            return str_replace('\.', '.', $key);
-        }, $segments);
-
-        return _array_search_dot($segments, $array);
-    }
-}
-
-if (! function_exists('_array_search_dot')) {
-    /**
-     * Used by `dot_array_search` to recursively search the
-     * array with wildcards.
-     *
-     * @internal This should not be used on its own.
-     *
-     * @return mixed
-     */
-    function _array_search_dot(array $indexes, array $array)
-    {
-        // Grab the current index
-        $currentIndex = $indexes ? array_shift($indexes) : null;
-
-        if ((empty($currentIndex) && (int) $currentIndex !== 0) || (! isset($array[$currentIndex]) && $currentIndex !== '*')) {
-            return null;
-        }
-
-        // Handle Wildcard (*)
-        if ($currentIndex === '*') {
-            $answer = [];
-
-            foreach ($array as $value) {
-                $answer[] = _array_search_dot($indexes, $value);
-            }
-
-            $answer = array_filter($answer, static function ($value) {
-                return $value !== null;
-            });
-
-            if ($answer !== []) {
-                if (count($answer) === 1) {
-                    // If array only has one element, we return that element for BC.
-                    return current($answer);
-                }
-
-                return $answer;
-            }
-
-            return null;
-        }
-
-        // If this is the last index, make sure to return it now,
-        // and not try to recurse through things.
-        if (empty($indexes)) {
-            return $array[$currentIndex];
-        }
-
-        // Do we need to recursively search this value?
-        if (is_array($array[$currentIndex]) && $array[$currentIndex] !== []) {
-            return _array_search_dot($indexes, $array[$currentIndex]);
-        }
-
-        // Otherwise we've found our match!
-        return $array[$currentIndex];
+        return ArrayHelper::dotSearch($index, $array);
     }
 }
 
@@ -92,19 +32,22 @@ if (! function_exists('array_deep_search')) {
     /**
      * Returns the value of an element at a key in an array of uncertain depth.
      *
-     * @param mixed $key
-     *
-     * @return mixed|null
+     * @param int|string              $key
+     * @param array<array-key, mixed> $array
      */
-    function array_deep_search($key, array $array)
+    function array_deep_search($key, array $array): mixed
     {
         if (isset($array[$key])) {
             return $array[$key];
         }
 
         foreach ($array as $value) {
-            if (is_array($value) && ($result = array_deep_search($key, $value))) {
-                return $result;
+            if (is_array($value)) {
+                $result = array_deep_search($key, $value);
+
+                if ($result !== null) {
+                    return $result;
+                }
             }
         }
 
@@ -134,14 +77,14 @@ if (! function_exists('array_sort_by_multiple_keys')) {
      * For information on multi-level array sorting, refer to Example #3 here:
      * https://www.php.net/manual/de/function.array-multisort.php
      *
-     * @param array $array       the reference of the array to be sorted
-     * @param array $sortColumns an associative array of columns to sort
-     *                           after and their sorting flags
+     * @param array<array-key, mixed> $array       The reference of the array to be sorted
+     * @param array<string, int>      $sortColumns An associative array of columns to sort
+     *                                             after and their sorting flags
      */
     function array_sort_by_multiple_keys(array &$array, array $sortColumns): bool
     {
         // Check if there really are columns to sort after
-        if (empty($sortColumns) || empty($array)) {
+        if ($sortColumns === [] || $array === []) {
             return false;
         }
 
@@ -185,10 +128,10 @@ if (! function_exists('array_flatten_with_dots')) {
     /**
      * Flatten a multidimensional array using dots as separators.
      *
-     * @param iterable $array The multi-dimensional array
-     * @param string   $id    Something to initially prepend to the flattened keys
+     * @param iterable<array-key, mixed> $array The multi-dimensional array
+     * @param string                     $id    Something to initially prepend to the flattened keys
      *
-     * @return array The flattened array
+     * @return array<string, mixed> The flattened array
      */
     function array_flatten_with_dots(iterable $array, string $id = ''): array
     {
@@ -197,7 +140,7 @@ if (! function_exists('array_flatten_with_dots')) {
         foreach ($array as $key => $value) {
             $newKey = $id . $key;
 
-            if (is_array($value)) {
+            if (is_array($value) && $value !== []) {
                 $flattened = array_merge($flattened, array_flatten_with_dots($value, $newKey . '.'));
             } else {
                 $flattened[$newKey] = $value;
@@ -205,5 +148,21 @@ if (! function_exists('array_flatten_with_dots')) {
         }
 
         return $flattened;
+    }
+}
+
+if (! function_exists('array_group_by')) {
+    /**
+     * Groups all rows by their index values. Result's depth equals number of indexes
+     *
+     * @param array<array-key, mixed> $array        Data array (i.e. from query result)
+     * @param list<string>            $indexes      Indexes to group by. Dot syntax used. Returns $array if empty
+     * @param bool                    $includeEmpty If true, null and '' are also added as valid keys to group
+     *
+     * @return array<array-key, mixed> Result array where rows are grouped together by indexes values.
+     */
+    function array_group_by(array $array, array $indexes, bool $includeEmpty = false): array
+    {
+        return ArrayHelper::groupBy($array, $indexes, $includeEmpty);
     }
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -30,10 +32,8 @@ final class ComposerScripts
 {
     /**
      * Path to the ThirdParty directory.
-     *
-     * @var string
      */
-    private static $path = __DIR__ . '/ThirdParty/';
+    private static string $path = __DIR__ . '/ThirdParty/';
 
     /**
      * Direct dependencies of CodeIgniter to copy
@@ -41,22 +41,25 @@ final class ComposerScripts
      *
      * @var array<string, array<string, string>>
      */
-    private static $dependencies = [
+    private static array $dependencies = [
         'kint-src' => [
-            'from' => __DIR__ . '/../vendor/kint-php/kint/src/',
-            'to'   => __DIR__ . '/ThirdParty/Kint/',
+            'license' => __DIR__ . '/../vendor/kint-php/kint/LICENSE',
+            'from'    => __DIR__ . '/../vendor/kint-php/kint/src/',
+            'to'      => __DIR__ . '/ThirdParty/Kint/',
         ],
         'kint-resources' => [
             'from' => __DIR__ . '/../vendor/kint-php/kint/resources/',
             'to'   => __DIR__ . '/ThirdParty/Kint/resources/',
         ],
         'escaper' => [
-            'from' => __DIR__ . '/../vendor/laminas/laminas-escaper/src/',
-            'to'   => __DIR__ . '/ThirdParty/Escaper/',
+            'license' => __DIR__ . '/../vendor/laminas/laminas-escaper/LICENSE.md',
+            'from'    => __DIR__ . '/../vendor/laminas/laminas-escaper/src/',
+            'to'      => __DIR__ . '/ThirdParty/Escaper/',
         ],
         'psr-log' => [
-            'from' => __DIR__ . '/../vendor/psr/log/Psr/Log/',
-            'to'   => __DIR__ . '/ThirdParty/PSR/Log/',
+            'license' => __DIR__ . '/../vendor/psr/log/LICENSE',
+            'from'    => __DIR__ . '/../vendor/psr/log/src/',
+            'to'      => __DIR__ . '/ThirdParty/PSR/Log/',
         ],
     ];
 
@@ -64,16 +67,25 @@ final class ComposerScripts
      * This static method is called by Composer after every update event,
      * i.e., `composer install`, `composer update`, `composer remove`.
      */
-    public static function postUpdate()
+    public static function postUpdate(): void
     {
         self::recursiveDelete(self::$path);
 
-        foreach (self::$dependencies as $dependency) {
+        foreach (self::$dependencies as $key => $dependency) {
+            // Kint may be removed.
+            if (! is_dir($dependency['from']) && str_starts_with($key, 'kint')) {
+                continue;
+            }
+
             self::recursiveMirror($dependency['from'], $dependency['to']);
+
+            if (isset($dependency['license'])) {
+                $license = basename($dependency['license']);
+                copy($dependency['license'], $dependency['to'] . '/' . $license);
+            }
         }
 
         self::copyKintInitFiles();
-        self::recursiveDelete(self::$dependencies['psr-log']['to'] . 'Test/');
     }
 
     /**
@@ -82,13 +94,15 @@ final class ComposerScripts
     private static function recursiveDelete(string $directory): void
     {
         if (! is_dir($directory)) {
-            echo sprintf('Cannot recursively delete "%s" as it does not exist.', $directory);
+            echo sprintf('Cannot recursively delete "%s" as it does not exist.', $directory) . PHP_EOL;
+
+            return;
         }
 
         /** @var SplFileInfo $file */
         foreach (new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator(rtrim($directory, '\\/'), FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST
+            RecursiveIteratorIterator::CHILD_FIRST,
         ) as $file) {
             $path = $file->getPathname();
 
@@ -121,14 +135,18 @@ final class ComposerScripts
             exit(1);
         }
 
-        @mkdir($targetDir, 0755, true);
+        if (! @mkdir($targetDir, 0755, true)) {
+            echo sprintf('Cannot create the target directory: "%s"', $targetDir) . PHP_EOL;
+
+            exit(1);
+        }
 
         $dirLen = strlen($originDir);
 
         /** @var SplFileInfo $file */
         foreach (new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($originDir, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::SELF_FIRST
+            RecursiveIteratorIterator::SELF_FIRST,
         ) as $file) {
             $origin = $file->getPathname();
             $target = $targetDir . substr($origin, $dirLen);

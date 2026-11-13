@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -16,19 +18,9 @@ use CodeIgniter\Publisher\Publisher;
 final class TestPublisher extends Publisher
 {
     /**
-     * Fakes an error on the given file.
-     */
-    public static function setResult(bool $result)
-    {
-        self::$result = $result;
-    }
-
-    /**
      * Return value for publish()
-     *
-     * @var bool
      */
-    private static $result = true;
+    private static bool $result = true;
 
     /**
      * Base path to use for the source.
@@ -43,6 +35,14 @@ final class TestPublisher extends Publisher
      * @var string
      */
     protected $destination = WRITEPATH;
+
+    /**
+     * Fakes an error on the given file.
+     */
+    public static function setResult(bool $result): void
+    {
+        self::$result = $result;
+    }
 
     /**
      * Fakes a publish event so no files are actually copied.

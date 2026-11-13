@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,10 +14,14 @@
 namespace CodeIgniter\Helpers;
 
 use CodeIgniter\Test\CIUnitTestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+use ValueError;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class ArrayHelperTest extends CIUnitTestCase
 {
     protected function setUp(): void
@@ -24,7 +30,7 @@ final class ArrayHelperTest extends CIUnitTestCase
         helper('array');
     }
 
-    public function testArrayDotSimple()
+    public function testArrayDotSimple(): void
     {
         $data = [
             'foo' => [
@@ -35,7 +41,7 @@ final class ArrayHelperTest extends CIUnitTestCase
         $this->assertSame(23, dot_array_search('foo.bar', $data));
     }
 
-    public function testArrayDotTooManyLevels()
+    public function testArrayDotTooManyLevels(): void
     {
         $data = [
             'foo' => [
@@ -43,10 +49,31 @@ final class ArrayHelperTest extends CIUnitTestCase
             ],
         ];
 
-        $this->assertSame(23, dot_array_search('foo.bar.baz', $data));
+        $this->assertNull(dot_array_search('foo.bar.baz', $data));
     }
 
-    public function testArrayDotEscape()
+    public function testArrayDotTooManyLevelsWithWildCard(): void
+    {
+        $data = [
+            'a' => [],
+        ];
+
+        $this->assertNull(dot_array_search('a.*.c', $data));
+    }
+
+    /**
+     * @see https://github.com/codeigniter4/CodeIgniter4/issues/5369
+     */
+    public function testArrayDotValueIsListArray(): void
+    {
+        $data = [
+            'arr' => [1, 2, 3],
+        ];
+
+        $this->assertNull(dot_array_search('arr.*.index', $data));
+    }
+
+    public function testArrayDotEscape(): void
     {
         $data = [
             'foo' => [
@@ -61,28 +88,37 @@ final class ArrayHelperTest extends CIUnitTestCase
         $this->assertSame(42, dot_array_search('foo\.bar.baz', $data));
     }
 
-    public function testArraySearchDotMultiLevels()
+    public function testArraySearchDotMultiLevels(): void
     {
-        $data1 = ['bar' => [['foo' => 'baz']]];
-        $data2 = ['bar' => [
-            ['foo' => 'bizz'],
-            ['foo' => 'buzz'],
-        ]];
-        $data3 = ['baz' => 'none'];
-
+        $data1 = [
+            'bar' => [
+                ['foo' => 'baz'],
+            ],
+        ];
         $this->assertSame('baz', dot_array_search('bar.*.foo', $data1));
+
+        $data2 = [
+            'bar' => [
+                ['foo' => 'bizz'],
+                ['foo' => 'buzz'],
+            ],
+        ];
         $this->assertSame(['bizz', 'buzz'], dot_array_search('bar.*.foo', $data2));
+
+        $data3 = [
+            'baz' => 'none',
+        ];
         $this->assertNull(dot_array_search('bar.*.foo', $data3));
     }
 
-    public function testArrayDotReturnNullEmptyArray()
+    public function testArrayDotReturnNullEmptyArray(): void
     {
         $data = [];
 
         $this->assertNull(dot_array_search('foo.bar', $data));
     }
 
-    public function testArrayDotReturnNullMissingValue()
+    public function testArrayDotReturnNullMissingValue(): void
     {
         $data = [
             'foo' => [
@@ -93,7 +129,7 @@ final class ArrayHelperTest extends CIUnitTestCase
         $this->assertNull(dot_array_search('foo.baz', $data));
     }
 
-    public function testArrayDotReturnNullEmptyIndex()
+    public function testArrayDotReturnNullEmptyIndex(): void
     {
         $data = [
             'foo' => [
@@ -104,7 +140,7 @@ final class ArrayHelperTest extends CIUnitTestCase
         $this->assertNull(dot_array_search('', $data));
     }
 
-    public function testArrayDotEarlyIndex()
+    public function testArrayDotEarlyIndex(): void
     {
         $data = [
             'foo' => [
@@ -115,7 +151,7 @@ final class ArrayHelperTest extends CIUnitTestCase
         $this->assertSame(['bar' => 23], dot_array_search('foo', $data));
     }
 
-    public function testArrayDotWildcard()
+    public function testArrayDotWildcard(): void
     {
         $data = [
             'foo' => [
@@ -128,7 +164,7 @@ final class ArrayHelperTest extends CIUnitTestCase
         $this->assertSame(23, dot_array_search('foo.*.baz', $data));
     }
 
-    public function testArrayDotWildcardWithMultipleChoices()
+    public function testArrayDotWildcardWithMultipleChoices(): void
     {
         $data = [
             'foo' => [
@@ -145,7 +181,7 @@ final class ArrayHelperTest extends CIUnitTestCase
         $this->assertSame(23, dot_array_search('foo.*.baz', $data));
     }
 
-    public function testArrayDotNestedNotFound()
+    public function testArrayDotNestedNotFound(): void
     {
         $data = [
             'foo' => [
@@ -161,7 +197,7 @@ final class ArrayHelperTest extends CIUnitTestCase
         $this->assertNull(dot_array_search('foo.*.notthere', $data));
     }
 
-    public function testArrayDotIgnoresLastWildcard()
+    public function testArrayDotIgnoresLastWildcard(): void
     {
         $data = [
             'foo' => [
@@ -175,12 +211,10 @@ final class ArrayHelperTest extends CIUnitTestCase
     }
 
     /**
-     * @dataProvider deepSearchProvider
-     *
-     * @param mixed $key
-     * @param mixed $expected
+     * @param array<array-key, mixed>|string|null $expected
      */
-    public function testArrayDeepSearch($key, $expected)
+    #[DataProvider('provideArrayDeepSearch')]
+    public function testArrayDeepSearch(int|string $key, array|string|null $expected): void
     {
         $data = [
             'key1' => 'Value 1',
@@ -206,99 +240,10 @@ final class ArrayHelperTest extends CIUnitTestCase
         $this->assertSame($expected, $result);
     }
 
-    public function testArrayDeepSearchReturnNullEmptyArray()
-    {
-        $data = [];
-
-        $this->assertNull(array_deep_search('key644', $data));
-    }
-
     /**
-     * @dataProvider sortByMultipleKeysProvider
-     *
-     * @param mixed $data
-     * @param mixed $sortColumns
-     * @param mixed $expected
+     * @return iterable<array{int|string, array<array-key, mixed>|string|null}>
      */
-    public function testArraySortByMultipleKeysWithArray($data, $sortColumns, $expected)
-    {
-        $success = array_sort_by_multiple_keys($data, $sortColumns);
-
-        $this->assertTrue($success);
-        $this->assertSame($expected, array_column($data, 'name'));
-    }
-
-    /**
-     * @dataProvider sortByMultipleKeysProvider
-     *
-     * @param mixed $data
-     * @param mixed $sortColumns
-     * @param mixed $expected
-     */
-    public function testArraySortByMultipleKeysWithObjects($data, $sortColumns, $expected)
-    {
-        // Morph to objects
-        foreach ($data as $index => $dataSet) {
-            $data[$index] = (object) $dataSet;
-        }
-
-        $success = array_sort_by_multiple_keys($data, $sortColumns);
-
-        $this->assertTrue($success);
-        $this->assertSame($expected, array_column((array) $data, 'name'));
-    }
-
-    /**
-     * @dataProvider sortByMultipleKeysProvider
-     *
-     * @param mixed $data
-     * @param mixed $sortColumns
-     * @param mixed $expected
-     */
-    public function testArraySortByMultipleKeysFailsEmptyParameter($data, $sortColumns, $expected)
-    {
-        // Both filled
-        $success = array_sort_by_multiple_keys($data, $sortColumns);
-
-        $this->assertTrue($success);
-
-        // Empty $sortColumns
-        $success = array_sort_by_multiple_keys($data, []);
-
-        $this->assertFalse($success);
-
-        // Empty &$array
-        $data    = [];
-        $success = array_sort_by_multiple_keys($data, $sortColumns);
-
-        $this->assertFalse($success);
-    }
-
-    /**
-     * @dataProvider sortByMultipleKeysProvider
-     *
-     * @param mixed $data
-     */
-    public function testArraySortByMultipleKeysFailsInconsistentArraySizes($data)
-    {
-        // PHP 8 changes this error type
-        if (version_compare(PHP_VERSION, '8.0', '<')) {
-            $this->expectException('ErrorException');
-        } else {
-            $this->expectException('ValueError');
-        }
-
-        $this->expectExceptionMessage('Array sizes are inconsistent');
-
-        $sortColumns = [
-            'team.orders' => SORT_ASC,
-            'positions'   => SORT_ASC,
-        ];
-
-        array_sort_by_multiple_keys($data, $sortColumns);
-    }
-
-    public static function deepSearchProvider()
+    public static function provideArrayDeepSearch(): iterable
     {
         return [
             [
@@ -324,7 +269,92 @@ final class ArrayHelperTest extends CIUnitTestCase
         ];
     }
 
-    public static function sortByMultipleKeysProvider()
+    public function testArrayDeepSearchReturnNullEmptyArray(): void
+    {
+        $data = [];
+
+        $this->assertNull(array_deep_search('key644', $data));
+    }
+
+    /**
+     * @param list<array{name: string, position: int, team: array{order: int}}> $data
+     * @param array<string, int>                                                $sortColumns
+     * @param list<string>                                                      $expected
+     */
+    #[DataProvider('provideSortByMultipleKeys')]
+    public function testArraySortByMultipleKeysWithArray(array $data, array $sortColumns, array $expected): void
+    {
+        $success = array_sort_by_multiple_keys($data, $sortColumns);
+
+        $this->assertTrue($success);
+        $this->assertSame($expected, array_column($data, 'name'));
+    }
+
+    /**
+     * @param list<array{name: string, position: int, team: array{order: int}}> $data
+     * @param array<string, int>                                                $sortColumns
+     * @param list<string>                                                      $expected
+     */
+    #[DataProvider('provideSortByMultipleKeys')]
+    public function testArraySortByMultipleKeysWithObjects(array $data, array $sortColumns, array $expected): void
+    {
+        // Morph to objects
+        foreach ($data as $index => $dataSet) {
+            $data[$index] = (object) $dataSet;
+        }
+
+        $success = array_sort_by_multiple_keys($data, $sortColumns);
+
+        $this->assertTrue($success);
+        $this->assertSame($expected, array_column($data, 'name'));
+    }
+
+    /**
+     * @param list<array{name: string, position: int, team: array{order: int}}> $data
+     * @param array<string, int>                                                $sortColumns
+     * @param list<string>                                                      $expected
+     */
+    #[DataProvider('provideSortByMultipleKeys')]
+    public function testArraySortByMultipleKeysFailsEmptyParameter(array $data, array $sortColumns, array $expected): void
+    {
+        // Both filled
+        $success = array_sort_by_multiple_keys($data, $sortColumns);
+
+        $this->assertTrue($success);
+
+        // Empty $sortColumns
+        $success = array_sort_by_multiple_keys($data, []);
+
+        $this->assertFalse($success);
+
+        // Empty &$array
+        $data    = [];
+        $success = array_sort_by_multiple_keys($data, $sortColumns);
+
+        $this->assertFalse($success);
+    }
+
+    /**
+     * @param mixed $data
+     */
+    #[DataProvider('provideSortByMultipleKeys')]
+    public function testArraySortByMultipleKeysFailsInconsistentArraySizes($data): void
+    {
+        $this->expectException(ValueError::class);
+        $this->expectExceptionMessage('Array sizes are inconsistent');
+
+        $sortColumns = [
+            'team.orders' => SORT_ASC,
+            'positions'   => SORT_ASC,
+        ];
+
+        array_sort_by_multiple_keys($data, $sortColumns);
+    }
+
+    /**
+     * @return iterable<array{list<array{name: string, position: int, team: array{order: int}}>, array<string, int>, list<string>}>
+     */
+    public static function provideSortByMultipleKeys(): iterable
     {
         $seed = [
             0 => [
@@ -378,17 +408,19 @@ final class ArrayHelperTest extends CIUnitTestCase
     }
 
     /**
-     * @dataProvider arrayFlattenProvider
-     *
-     * @param iterable $input
-     * @param iterable $expected
+     * @param array<array-key, mixed> $input
+     * @param array<string, mixed>    $expected
      */
-    public function testArrayFlattening($input, $expected): void
+    #[DataProvider('provideArrayFlattening')]
+    public function testArrayFlattening(array $input, array $expected): void
     {
         $this->assertSame($expected, array_flatten_with_dots($input));
     }
 
-    public function arrayFlattenProvider(): iterable
+    /**
+     * @return iterable<string, array{array<array-key, mixed>, array<string, mixed>}>
+     */
+    public static function provideArrayFlattening(): iterable
     {
         yield 'normal' => [
             [
@@ -440,24 +472,22 @@ final class ArrayHelperTest extends CIUnitTestCase
             ],
             [
                 'foo'      => 'bar',
+                'baz'      => [],
                 'bar.fizz' => 'buzz',
                 'bar.nope' => 'yeah',
+                'bar.why'  => [],
             ],
         ];
 
-        yield 'with-mixed-empty' => [
+        yield 'with-empty-string-index' => [
             [
                 'foo' => 1,
                 ''    => [
                     'bar' => 2,
                     'baz' => 3,
                 ],
-                0 => [
-                    'fizz' => 4,
-                ],
-                1 => [
-                    'buzz' => 5,
-                ],
+                ['fizz' => 4],
+                ['buzz' => 5],
             ],
             [
                 'foo'    => 1,
@@ -465,6 +495,825 @@ final class ArrayHelperTest extends CIUnitTestCase
                 '.baz'   => 3,
                 '0.fizz' => 4,
                 '1.buzz' => 5,
+            ],
+        ];
+
+        yield 'empty-array-and-lists' => [
+            [
+                'bar' => [
+                    ['foo' => 'baz'],
+                    ['foo' => []],
+                ],
+            ],
+            [
+                'bar.0.foo' => 'baz',
+                'bar.1.foo' => [],
+            ],
+        ];
+    }
+
+    /**
+     * @param list<string>            $indexes
+     * @param array<array-key, mixed> $data
+     * @param array<array-key, mixed> $expected
+     */
+    #[DataProvider('provideArrayGroupByIncludeEmpty')]
+    public function testArrayGroupByIncludeEmpty(array $indexes, array $data, array $expected): void
+    {
+        $actual = array_group_by($data, $indexes, true);
+
+        $this->assertSame($expected, $actual, 'array including empty not the same');
+    }
+
+    /**
+     * @return iterable<string, array{list<string>, array<array-key, mixed>, array<array-key, mixed>}>
+     */
+    public static function provideArrayGroupByIncludeEmpty(): iterable
+    {
+        yield 'simple group-by test' => [
+            ['color'],
+            [
+                [
+                    'id'    => 1,
+                    'item'  => 'ball',
+                    'color' => 'blue',
+                ],
+                [
+                    'id'    => 2,
+                    'item'  => 'book',
+                    'color' => 'red',
+                ],
+                [
+                    'id'   => 3,
+                    'item' => 'bird',
+                    'age'  => 5,
+                ],
+                [
+                    'id'    => 4,
+                    'item'  => 'jeans',
+                    'color' => 'blue',
+                ],
+            ],
+            [
+                'blue' => [
+                    [
+                        'id'    => 1,
+                        'item'  => 'ball',
+                        'color' => 'blue',
+                    ],
+                    [
+                        'id'    => 4,
+                        'item'  => 'jeans',
+                        'color' => 'blue',
+                    ],
+                ],
+                'red' => [
+                    [
+                        'id'    => 2,
+                        'item'  => 'book',
+                        'color' => 'red',
+                    ],
+                ],
+                '' => [
+                    [
+                        'id'   => 3,
+                        'item' => 'bird',
+                        'age'  => 5,
+                    ],
+                ],
+            ],
+        ];
+
+        yield '2 index data' => [
+            ['gender', 'country'],
+            [
+                [
+                    'id'         => 1,
+                    'first_name' => 'Scarface',
+                    'gender'     => 'Male',
+                    'country'    => 'Germany',
+                ],
+                [
+                    'id'         => 2,
+                    'first_name' => 'Fletch',
+                    'gender'     => 'Male',
+                    'country'    => 'France',
+                ],
+                [
+                    'id'         => 3,
+                    'first_name' => 'Wrennie',
+                    'gender'     => 'Female',
+                    'country'    => 'France',
+                ],
+                [
+                    'id'         => 4,
+                    'first_name' => 'Virgilio',
+                    'gender'     => 'Male',
+                    'country'    => 'France',
+                ],
+                [
+                    'id'         => 5,
+                    'first_name' => 'Cathlene',
+                    'gender'     => 'Polygender',
+                    'country'    => 'France',
+                ],
+                [
+                    'id'         => 6,
+                    'first_name' => 'Far',
+                    'gender'     => 'Male',
+                    'country'    => 'Canada',
+                ],
+                [
+                    'id'         => 7,
+                    'first_name' => 'Dolores',
+                    'gender'     => 'Female',
+                    'country'    => 'Canada',
+                ],
+                [
+                    'id'         => 8,
+                    'first_name' => 'Sissy',
+                    'gender'     => 'Female',
+                    'country'    => null,
+                ],
+                [
+                    'id'         => 9,
+                    'first_name' => 'Chlo',
+                    'gender'     => 'Female',
+                    'country'    => 'France',
+                ],
+                [
+                    'id'         => 10,
+                    'first_name' => 'Gabbie',
+                    'gender'     => 'Male',
+                    'country'    => 'Canada',
+                ],
+            ],
+            [
+                'Male' => [
+                    'Germany' => [
+                        [
+                            'id'         => 1,
+                            'first_name' => 'Scarface',
+                            'gender'     => 'Male',
+                            'country'    => 'Germany',
+                        ],
+                    ],
+                    'France' => [
+                        [
+                            'id'         => 2,
+                            'first_name' => 'Fletch',
+                            'gender'     => 'Male',
+                            'country'    => 'France',
+                        ],
+                        [
+                            'id'         => 4,
+                            'first_name' => 'Virgilio',
+                            'gender'     => 'Male',
+                            'country'    => 'France',
+                        ],
+                    ],
+                    'Canada' => [
+                        [
+                            'id'         => 6,
+                            'first_name' => 'Far',
+                            'gender'     => 'Male',
+                            'country'    => 'Canada',
+                        ],
+                        [
+                            'id'         => 10,
+                            'first_name' => 'Gabbie',
+                            'gender'     => 'Male',
+                            'country'    => 'Canada',
+                        ],
+                    ],
+                ],
+                'Female' => [
+                    'France' => [
+                        [
+                            'id'         => 3,
+                            'first_name' => 'Wrennie',
+                            'gender'     => 'Female',
+                            'country'    => 'France',
+                        ],
+                        [
+                            'id'         => 9,
+                            'first_name' => 'Chlo',
+                            'gender'     => 'Female',
+                            'country'    => 'France',
+                        ],
+                    ],
+                    'Canada' => [
+                        [
+                            'id'         => 7,
+                            'first_name' => 'Dolores',
+                            'gender'     => 'Female',
+                            'country'    => 'Canada',
+                        ],
+                    ],
+                    '' => [
+                        [
+                            'id'         => 8,
+                            'first_name' => 'Sissy',
+                            'gender'     => 'Female',
+                            'country'    => null,
+                        ],
+                    ],
+                ],
+                'Polygender' => [
+                    'France' => [
+                        [
+                            'id'         => 5,
+                            'first_name' => 'Cathlene',
+                            'gender'     => 'Polygender',
+                            'country'    => 'France',
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        yield 'nested data with dot syntax' => [
+            ['gender', 'hr.department'],
+            [
+                [
+                    'id'         => 1,
+                    'first_name' => 'Urbano',
+                    'gender'     => null,
+                    'hr'         => [
+                        'country'    => 'Canada',
+                        'department' => 'Engineering',
+                    ],
+                ],
+                [
+                    'id'         => 2,
+                    'first_name' => 'Case',
+                    'gender'     => 'Male',
+                    'hr'         => [
+                        'country'    => null,
+                        'department' => 'Marketing',
+                    ],
+                ],
+                [
+                    'id'         => 3,
+                    'first_name' => 'Emera',
+                    'gender'     => 'Female',
+                    'hr'         => [
+                        'country'    => 'France',
+                        'department' => 'Engineering',
+                    ],
+                ],
+                [
+                    'id'         => 4,
+                    'first_name' => 'Richy',
+                    'gender'     => null,
+                    'hr'         => [
+                        'country'    => null,
+                        'department' => 'Sales',
+                    ],
+                ],
+                [
+                    'id'         => 5,
+                    'first_name' => 'Mandy',
+                    'gender'     => null,
+                    'hr'         => [
+                        'country'    => 'France',
+                        'department' => 'Sales',
+                    ],
+                ],
+                [
+                    'id'         => 6,
+                    'first_name' => 'Risa',
+                    'gender'     => 'Female',
+                    'hr'         => [
+                        'country'    => null,
+                        'department' => 'Engineering',
+                    ],
+                ],
+                [
+                    'id'         => 7,
+                    'first_name' => 'Alfred',
+                    'gender'     => 'Male',
+                    'hr'         => [
+                        'country'    => 'France',
+                        'department' => 'Engineering',
+                    ],
+                ],
+                [
+                    'id'         => 8,
+                    'first_name' => 'Tabby',
+                    'gender'     => 'Male',
+                    'hr'         => [
+                        'country'    => 'France',
+                        'department' => 'Marketing',
+                    ],
+                ],
+                [
+                    'id'         => 9,
+                    'first_name' => 'Ario',
+                    'gender'     => 'Male',
+                    'hr'         => [
+                        'country'    => null,
+                        'department' => 'Sales',
+                    ],
+                ],
+                [
+                    'id'         => 10,
+                    'first_name' => 'Somerset',
+                    'gender'     => 'Male',
+                    'hr'         => [
+                        'country'    => 'Germany',
+                        'department' => 'Marketing',
+                    ],
+                ],
+            ],
+            [
+                '' => [
+                    'Engineering' => [
+                        [
+                            'id'         => 1,
+                            'first_name' => 'Urbano',
+                            'gender'     => null,
+                            'hr'         => [
+                                'country'    => 'Canada',
+                                'department' => 'Engineering',
+                            ],
+                        ],
+                    ],
+                    'Sales' => [
+                        [
+                            'id'         => 4,
+                            'first_name' => 'Richy',
+                            'gender'     => null,
+                            'hr'         => [
+                                'country'    => null,
+                                'department' => 'Sales',
+                            ],
+                        ],
+                        [
+                            'id'         => 5,
+                            'first_name' => 'Mandy',
+                            'gender'     => null,
+                            'hr'         => [
+                                'country'    => 'France',
+                                'department' => 'Sales',
+                            ],
+                        ],
+                    ],
+                ],
+                'Male' => [
+                    'Marketing' => [
+                        [
+                            'id'         => 2,
+                            'first_name' => 'Case',
+                            'gender'     => 'Male',
+                            'hr'         => [
+                                'country'    => null,
+                                'department' => 'Marketing',
+                            ],
+                        ],
+                        [
+                            'id'         => 8,
+                            'first_name' => 'Tabby',
+                            'gender'     => 'Male',
+                            'hr'         => [
+                                'country'    => 'France',
+                                'department' => 'Marketing',
+                            ],
+                        ],
+                        [
+                            'id'         => 10,
+                            'first_name' => 'Somerset',
+                            'gender'     => 'Male',
+                            'hr'         => [
+                                'country'    => 'Germany',
+                                'department' => 'Marketing',
+                            ],
+                        ],
+                    ],
+                    'Engineering' => [
+                        [
+                            'id'         => 7,
+                            'first_name' => 'Alfred',
+                            'gender'     => 'Male',
+                            'hr'         => [
+                                'country'    => 'France',
+                                'department' => 'Engineering',
+                            ],
+                        ],
+                    ],
+                    'Sales' => [
+                        [
+                            'id'         => 9,
+                            'first_name' => 'Ario',
+                            'gender'     => 'Male',
+                            'hr'         => [
+                                'country'    => null,
+                                'department' => 'Sales',
+                            ],
+                        ],
+                    ],
+                ],
+                'Female' => [
+                    'Engineering' => [
+                        [
+                            'id'         => 3,
+                            'first_name' => 'Emera',
+                            'gender'     => 'Female',
+                            'hr'         => [
+                                'country'    => 'France',
+                                'department' => 'Engineering',
+                            ],
+                        ],
+                        [
+                            'id'         => 6,
+                            'first_name' => 'Risa',
+                            'gender'     => 'Female',
+                            'hr'         => [
+                                'country'    => null,
+                                'department' => 'Engineering',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * @param list<string>            $indexes
+     * @param array<array-key, mixed> $data
+     * @param array<array-key, mixed> $expected
+     */
+    #[DataProvider('provideArrayGroupByExcludeEmpty')]
+    public function testArrayGroupByExcludeEmpty(array $indexes, array $data, array $expected): void
+    {
+        $actual = array_group_by($data, $indexes, false);
+
+        $this->assertSame($expected, $actual, 'array excluding empty not the same');
+    }
+
+    /**
+     * @return iterable<string, array{list<string>, array<array-key, mixed>, array<array-key, mixed>}>
+     */
+    public static function provideArrayGroupByExcludeEmpty(): iterable
+    {
+        yield 'simple group-by test' => [
+            ['color'],
+            [
+                [
+                    'id'    => 1,
+                    'item'  => 'ball',
+                    'color' => 'blue',
+                ],
+                [
+                    'id'    => 2,
+                    'item'  => 'book',
+                    'color' => 'red',
+                ],
+                [
+                    'id'   => 3,
+                    'item' => 'bird',
+                    'age'  => 5,
+                ],
+                [
+                    'id'    => 4,
+                    'item'  => 'jeans',
+                    'color' => 'blue',
+                ],
+            ],
+            [
+                'blue' => [
+                    [
+                        'id'    => 1,
+                        'item'  => 'ball',
+                        'color' => 'blue',
+                    ],
+                    [
+                        'id'    => 4,
+                        'item'  => 'jeans',
+                        'color' => 'blue',
+                    ],
+                ],
+                'red' => [
+                    [
+                        'id'    => 2,
+                        'item'  => 'book',
+                        'color' => 'red',
+                    ],
+                ],
+            ],
+        ];
+
+        yield '2 index data' => [
+            ['gender', 'country'],
+            [
+                [
+                    'id'         => 1,
+                    'first_name' => 'Scarface',
+                    'gender'     => 'Male',
+                    'country'    => 'Germany',
+                ],
+                [
+                    'id'         => 2,
+                    'first_name' => 'Fletch',
+                    'gender'     => 'Male',
+                    'country'    => 'France',
+                ],
+                [
+                    'id'         => 3,
+                    'first_name' => 'Wrennie',
+                    'gender'     => 'Female',
+                    'country'    => 'France',
+                ],
+                [
+                    'id'         => 4,
+                    'first_name' => 'Virgilio',
+                    'gender'     => 'Male',
+                    'country'    => 'France',
+                ],
+                [
+                    'id'         => 5,
+                    'first_name' => 'Cathlene',
+                    'gender'     => 'Polygender',
+                    'country'    => 'France',
+                ],
+                [
+                    'id'         => 6,
+                    'first_name' => 'Far',
+                    'gender'     => 'Male',
+                    'country'    => 'Canada',
+                ],
+                [
+                    'id'         => 7,
+                    'first_name' => 'Dolores',
+                    'gender'     => 'Female',
+                    'country'    => 'Canada',
+                ],
+                [
+                    'id'         => 8,
+                    'first_name' => 'Sissy',
+                    'gender'     => 'Female',
+                    'country'    => null,
+                ],
+                [
+                    'id'         => 9,
+                    'first_name' => 'Chlo',
+                    'gender'     => 'Female',
+                    'country'    => 'France',
+                ],
+                [
+                    'id'         => 10,
+                    'first_name' => 'Gabbie',
+                    'gender'     => 'Male',
+                    'country'    => 'Canada',
+                ],
+            ],
+            [
+                'Male' => [
+                    'Germany' => [
+                        [
+                            'id'         => 1,
+                            'first_name' => 'Scarface',
+                            'gender'     => 'Male',
+                            'country'    => 'Germany',
+                        ],
+                    ],
+                    'France' => [
+                        [
+                            'id'         => 2,
+                            'first_name' => 'Fletch',
+                            'gender'     => 'Male',
+                            'country'    => 'France',
+                        ],
+                        [
+                            'id'         => 4,
+                            'first_name' => 'Virgilio',
+                            'gender'     => 'Male',
+                            'country'    => 'France',
+                        ],
+                    ],
+                    'Canada' => [
+                        [
+                            'id'         => 6,
+                            'first_name' => 'Far',
+                            'gender'     => 'Male',
+                            'country'    => 'Canada',
+                        ],
+                        [
+                            'id'         => 10,
+                            'first_name' => 'Gabbie',
+                            'gender'     => 'Male',
+                            'country'    => 'Canada',
+                        ],
+                    ],
+                ],
+                'Female' => [
+                    'France' => [
+                        [
+                            'id'         => 3,
+                            'first_name' => 'Wrennie',
+                            'gender'     => 'Female',
+                            'country'    => 'France',
+                        ],
+                        [
+                            'id'         => 9,
+                            'first_name' => 'Chlo',
+                            'gender'     => 'Female',
+                            'country'    => 'France',
+                        ],
+                    ],
+                    'Canada' => [
+                        [
+                            'id'         => 7,
+                            'first_name' => 'Dolores',
+                            'gender'     => 'Female',
+                            'country'    => 'Canada',
+                        ],
+                    ],
+                ],
+                'Polygender' => [
+                    'France' => [
+                        [
+                            'id'         => 5,
+                            'first_name' => 'Cathlene',
+                            'gender'     => 'Polygender',
+                            'country'    => 'France',
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        yield 'nested data with dot syntax' => [
+            ['gender', 'hr.department'],
+            [
+                [
+                    'id'         => 1,
+                    'first_name' => 'Urbano',
+                    'gender'     => null,
+                    'hr'         => [
+                        'country'    => 'Canada',
+                        'department' => 'Engineering',
+                    ],
+                ],
+                [
+                    'id'         => 2,
+                    'first_name' => 'Case',
+                    'gender'     => 'Male',
+                    'hr'         => [
+                        'country'    => null,
+                        'department' => 'Marketing',
+                    ],
+                ],
+                [
+                    'id'         => 3,
+                    'first_name' => 'Emera',
+                    'gender'     => 'Female',
+                    'hr'         => [
+                        'country'    => 'France',
+                        'department' => 'Engineering',
+                    ],
+                ],
+                [
+                    'id'         => 4,
+                    'first_name' => 'Richy',
+                    'gender'     => null,
+                    'hr'         => [
+                        'country'    => null,
+                        'department' => 'Sales',
+                    ],
+                ],
+                [
+                    'id'         => 5,
+                    'first_name' => 'Mandy',
+                    'gender'     => null,
+                    'hr'         => [
+                        'country'    => 'France',
+                        'department' => 'Sales',
+                    ],
+                ],
+                [
+                    'id'         => 6,
+                    'first_name' => 'Risa',
+                    'gender'     => 'Female',
+                    'hr'         => [
+                        'country'    => null,
+                        'department' => 'Engineering',
+                    ],
+                ],
+                [
+                    'id'         => 7,
+                    'first_name' => 'Alfred',
+                    'gender'     => 'Male',
+                    'hr'         => [
+                        'country'    => 'France',
+                        'department' => 'Engineering',
+                    ],
+                ],
+                [
+                    'id'         => 8,
+                    'first_name' => 'Tabby',
+                    'gender'     => 'Male',
+                    'hr'         => [
+                        'country'    => 'France',
+                        'department' => 'Marketing',
+                    ],
+                ],
+                [
+                    'id'         => 9,
+                    'first_name' => 'Ario',
+                    'gender'     => 'Male',
+                    'hr'         => [
+                        'country'    => null,
+                        'department' => 'Sales',
+                    ],
+                ],
+                [
+                    'id'         => 10,
+                    'first_name' => 'Somerset',
+                    'gender'     => 'Male',
+                    'hr'         => [
+                        'country'    => 'Germany',
+                        'department' => 'Marketing',
+                    ],
+                ],
+            ],
+            [
+                'Male' => [
+                    'Marketing' => [
+                        [
+                            'id'         => 2,
+                            'first_name' => 'Case',
+                            'gender'     => 'Male',
+                            'hr'         => [
+                                'country'    => null,
+                                'department' => 'Marketing',
+                            ],
+                        ],
+                        [
+                            'id'         => 8,
+                            'first_name' => 'Tabby',
+                            'gender'     => 'Male',
+                            'hr'         => [
+                                'country'    => 'France',
+                                'department' => 'Marketing',
+                            ],
+                        ],
+                        [
+                            'id'         => 10,
+                            'first_name' => 'Somerset',
+                            'gender'     => 'Male',
+                            'hr'         => [
+                                'country'    => 'Germany',
+                                'department' => 'Marketing',
+                            ],
+                        ],
+                    ],
+                    'Engineering' => [
+                        [
+                            'id'         => 7,
+                            'first_name' => 'Alfred',
+                            'gender'     => 'Male',
+                            'hr'         => [
+                                'country'    => 'France',
+                                'department' => 'Engineering',
+                            ],
+                        ],
+                    ],
+                    'Sales' => [
+                        [
+                            'id'         => 9,
+                            'first_name' => 'Ario',
+                            'gender'     => 'Male',
+                            'hr'         => [
+                                'country'    => null,
+                                'department' => 'Sales',
+                            ],
+                        ],
+                    ],
+                ],
+                'Female' => [
+                    'Engineering' => [
+                        [
+                            'id'         => 3,
+                            'first_name' => 'Emera',
+                            'gender'     => 'Female',
+                            'hr'         => [
+                                'country'    => 'France',
+                                'department' => 'Engineering',
+                            ],
+                        ],
+                        [
+                            'id'         => 6,
+                            'first_name' => 'Risa',
+                            'gender'     => 'Female',
+                            'hr'         => [
+                                'country'    => null,
+                                'department' => 'Engineering',
+                            ],
+                        ],
+                    ],
+                ],
             ],
         ];
     }

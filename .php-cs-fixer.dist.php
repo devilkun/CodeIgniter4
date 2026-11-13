@@ -13,52 +13,38 @@ declare(strict_types=1);
 
 use CodeIgniter\CodingStandard\CodeIgniter4;
 use Nexus\CsConfig\Factory;
-use Nexus\CsConfig\Fixer\Comment\NoCodeSeparatorCommentFixer;
-use Nexus\CsConfig\Fixer\Comment\SpaceAfterCommentStartFixer;
-use Nexus\CsConfig\FixerGenerator;
 use PhpCsFixer\Finder;
 
 $finder = Finder::create()
     ->files()
     ->in([
         __DIR__ . '/system',
-        __DIR__ . '/tests',
         __DIR__ . '/utils',
     ])
-    ->exclude(['ThirdParty'])
-    ->notName('#Foobar.php$#')
+    ->exclude([
+        'Pager/Views',
+        'ThirdParty',
+        'Validation/Views',
+    ])
     ->append([
         __FILE__,
-        __DIR__ . '/.no-header.php-cs-fixer.dist.php',
+        __DIR__ . '/.php-cs-fixer.no-header.php',
+        __DIR__ . '/.php-cs-fixer.tests.php',
+        __DIR__ . '/.php-cs-fixer.user-guide.php',
+        __DIR__ . '/preload.php',
         __DIR__ . '/rector.php',
         __DIR__ . '/spark',
     ]);
 
-$overrides = [
-    // @TODO Remove once these are live in coding-standard
-    'assign_null_coalescing_to_coalesce_equal' => false, // requires 7.4+
-    'control_structure_continuation_position'  => ['position' => 'same_line'],
-    'empty_loop_condition'                     => ['style' => 'while'],
-    'integer_literal_case'                     => true,
-    'modernize_strpos'                         => false, // requires 8.0+
-    'no_alternative_syntax'                    => ['fix_non_monolithic_code' => false],
-    'no_space_around_double_colon'             => true,
-    'octal_notation'                           => false, // requires 8.1+
-    'string_length_to_empty'                   => true,
-];
+$overrides = [];
 
 $options = [
-    'cacheFile'    => 'build/.php-cs-fixer.cache',
-    'finder'       => $finder,
-    'customFixers' => FixerGenerator::create('vendor/nexusphp/cs-config/src/Fixer', 'Nexus\\CsConfig\\Fixer'),
-    'customRules'  => [
-        NoCodeSeparatorCommentFixer::name() => true,
-        SpaceAfterCommentStartFixer::name() => true,
-    ],
+    'cacheFile' => 'build/.php-cs-fixer.cache',
+    'finder'    => $finder,
 ];
 
 return Factory::create(new CodeIgniter4(), $overrides, $options)->forLibrary(
     'CodeIgniter 4 framework',
     'CodeIgniter Foundation',
-    'admin@codeigniter.com'
+    'admin@codeigniter.com',
 );

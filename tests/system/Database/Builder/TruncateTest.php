@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,10 +16,12 @@ namespace CodeIgniter\Database\Builder;
 use CodeIgniter\Database\BaseBuilder;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\Mock\MockConnection;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class TruncateTest extends CIUnitTestCase
 {
     protected $db;
@@ -29,7 +33,7 @@ final class TruncateTest extends CIUnitTestCase
         $this->db = new MockConnection([]);
     }
 
-    public function testTruncate()
+    public function testTruncate(): void
     {
         $builder = new BaseBuilder('user', $this->db);
 

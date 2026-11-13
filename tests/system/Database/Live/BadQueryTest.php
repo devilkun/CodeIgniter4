@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,54 +13,62 @@
 
 namespace CodeIgniter\Database\Live;
 
+use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
-use Exception;
+use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\Database\Seeds\CITestSeeder;
 
 /**
- * @group DatabaseLive
- *
  * @internal
  */
+#[Group('DatabaseLive')]
 final class BadQueryTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
     protected $refresh = true;
+    protected $seed    = CITestSeeder::class;
 
-    protected $seed = 'Tests\Support\Database\Seeds\CITestSeeder';
-    protected static $origDebug;
-
-    /**
-     * This test must run first to store the inital debug value before we tinker with it below
-     */
-    public function testFirst()
+    public function testBadQueryDebugTrue(): void
     {
-        $this::$origDebug = $this->getPrivateProperty($this->db, 'DBDebug');
+        $this->enableDBDebug();
 
-        $this->assertIsBool($this::$origDebug);
-    }
+        $this->expectException(DatabaseException::class);
 
-    public function testBadQueryDebugTrue()
-    {
-        // WARNING this value will persist! take care to roll it back.
-        $this->setPrivateProperty($this->db, 'DBDebug', true);
-        // expect an exception, class and message varies by DBMS
-        $this->expectException(Exception::class);
         $this->db->query('SELECT * FROM table_does_not_exist');
 
         // this code is never executed
     }
 
-    public function testBadQueryDebugFalse()
+    public function testBadQueryDebugFalse(): void
     {
         // WARNING this value will persist! take care to roll it back.
-        $this->setPrivateProperty($this->db, 'DBDebug', false);
+        $this->disableDBDebug();
+
         // this throws an exception when DBDebug is true, but it'll return FALSE when DBDebug is false
         $query = $this->db->query('SELECT * FROM table_does_not_exist');
+
         $this->assertFalse($query);
 
-        // restore the DBDebug value in effect when this unit test began
-        $this->setPrivateProperty($this->db, 'DBDebug', self::$origDebug);
+        $this->enableDBDebug();
+    }
+
+    public function testPostgreBadQueryDebugTrueWithWarningsDisabled(): void
+    {
+        if ($this->db->DBDriver !== 'Postgre') {
+            $this->markTestSkipped('This test is only for Postgre.');
+        }
+
+        $this->enableDBDebug();
+        $errorReporting = error_reporting(E_ALL & ~E_WARNING);
+
+        try {
+            $this->expectException(DatabaseException::class);
+            $this->expectExceptionMessage('table_does_not_exist');
+            $this->db->query('SELECT * FROM table_does_not_exist');
+        } finally {
+            error_reporting($errorReporting);
+        }
     }
 }

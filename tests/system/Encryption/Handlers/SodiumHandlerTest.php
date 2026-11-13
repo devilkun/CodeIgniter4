@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,23 +14,19 @@
 namespace CodeIgniter\Encryption\Handlers;
 
 use CodeIgniter\Encryption\Encryption;
+use CodeIgniter\Encryption\Exceptions\EncryptionException;
 use CodeIgniter\Test\CIUnitTestCase;
 use Config\Encryption as EncryptionConfig;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class SodiumHandlerTest extends CIUnitTestCase
 {
-    /**
-     * @var \CodeIgniter\Encryption\Encryption
-     */
-    protected $encryption;
-
-    /**
-     * @var \Config\Encryption
-     */
-    protected $config;
+    private Encryption $encryption;
+    private EncryptionConfig $config;
 
     protected function setUp(): void
     {
@@ -44,55 +42,64 @@ final class SodiumHandlerTest extends CIUnitTestCase
         $this->encryption     = new Encryption($this->config);
     }
 
-    public function testPropertiesGetter()
+    public function testPropertiesGetter(): void
     {
         $this->config->key       = sodium_crypto_secretbox_keygen();
         $this->config->blockSize = 256;
         $encrypter               = $this->encryption->initialize($this->config);
+        $this->assertInstanceOf(SodiumHandler::class, $encrypter);
 
         $this->assertSame($this->config->key, $encrypter->key);
         $this->assertSame($this->config->blockSize, $encrypter->blockSize);
-        $this->assertNull($encrypter->driver);
+        $this->assertNull($encrypter->driver); // @phpstan-ignore property.notFound
     }
 
-    public function testEmptyKeyThrowsErrorOnInitialize()
+    public function testEmptyKeyThrowsErrorOnInitialize(): void
     {
-        $this->expectException('CodeIgniter\Encryption\Exceptions\EncryptionException');
+        $this->expectException(EncryptionException::class);
 
         $this->config->key = '';
         $this->encryption->initialize($this->config);
     }
 
-    public function testEmptyKeyThrowsErrorOnEncrypt()
+    public function testEmptyKeyThrowsErrorOnEncrypt(): void
     {
-        $this->expectException('CodeIgniter\Encryption\Exceptions\EncryptionException');
+        $this->expectException(EncryptionException::class);
 
         $encrypter = $this->encryption->initialize($this->config);
         $encrypter->encrypt('Some message to encrypt', '');
     }
 
-    public function testInvalidBlockSizeThrowsErrorOnEncrypt()
+    public function testInvalidBlockSizeThrowsErrorOnEncrypt(): void
     {
-        $this->expectException('CodeIgniter\Encryption\Exceptions\EncryptionException');
+        $this->expectException(EncryptionException::class);
         $this->config->blockSize = -1;
 
         $encrypter = $this->encryption->initialize($this->config);
         $encrypter->encrypt('Some message.');
     }
 
-    public function testEmptyKeyThrowsErrorOnDecrypt()
+    public function testHandlerCanBeReusedAfterEncryption(): void
     {
-        $this->expectException('CodeIgniter\Encryption\Exceptions\EncryptionException');
+        $encrypter = $this->encryption->initialize($this->config);
+        $message   = 'Some message to encrypt';
 
-        $encrypter  = $this->encryption->initialize($this->config);
-        $ciphertext = $encrypter->encrypt('Some message to encrypt');
-        // After encrypt, the message and key are wiped from buffer
-        $encrypter->decrypt($ciphertext);
+        $ciphertext = $encrypter->encrypt($message);
+        $plaintext  = $encrypter->decrypt($ciphertext);
+
+        $this->assertSame($message, $plaintext);
+
+        // Should also work for another encryption
+        $message2    = 'Another message';
+        $ciphertext2 = $encrypter->encrypt($message2);
+        $plaintext2  = $encrypter->decrypt($ciphertext2);
+
+        $this->assertSame($message2, $plaintext2);
     }
 
-    public function testInvalidBlockSizeThrowsErrorOnDecrypt()
+    public function testInvalidBlockSizeThrowsErrorOnDecrypt(): void
     {
-        $this->expectException('CodeIgniter\Encryption\Exceptions\EncryptionException');
+        $this->expectException(EncryptionException::class);
         $key = $this->config->key;
 
         $encrypter  = $this->encryption->initialize($this->config);
@@ -101,9 +108,9 @@ final class SodiumHandlerTest extends CIUnitTestCase
         $encrypter->decrypt($ciphertext, ['key' => $key, 'blockSize' => 0]);
     }
 
-    public function testTruncatedMessageThrowsErrorOnDecrypt()
+    public function testTruncatedMessageThrowsErrorOnDecrypt(): void
     {
-        $this->expectException('CodeIgniter\Encryption\Exceptions\EncryptionException');
+        $this->expectException(EncryptionException::class);
 
         $encrypter  = $this->encryption->initialize($this->config);
         $ciphertext = $encrypter->encrypt('Some message to encrypt');
@@ -111,7 +118,7 @@ final class SodiumHandlerTest extends CIUnitTestCase
         $encrypter->decrypt($truncated, ['blockSize' => 256, 'key' => sodium_crypto_secretbox_keygen()]);
     }
 
-    public function testDecryptingMessages()
+    public function testDecryptingMessages(): void
     {
         $key = sodium_crypto_secretbox_keygen();
         $msg = 'A plaintext message for you.';
@@ -122,5 +129,82 @@ final class SodiumHandlerTest extends CIUnitTestCase
 
         $this->assertSame($msg, $encrypter->decrypt($ciphertext, $key));
         $this->assertNotSame('A plain-text message for you.', $encrypter->decrypt($ciphertext, $key));
+    }
+
+    public function testInternalKeyNotModifiedByParams(): void
+    {
+        $originalKey = sodium_crypto_secretbox_keygen();
+
+        $this->config->key = $originalKey;
+        $encrypter         = $this->encryption->initialize($this->config);
+        $this->assertInstanceOf(SodiumHandler::class, $encrypter);
+
+        $key = $encrypter->key;
+        $this->assertSame($originalKey, $key);
+
+        $message      = 'This is a plain-text message.';
+        $differentKey = sodium_crypto_secretbox_keygen();
+        $encoded      = $encrypter->encrypt($message, ['key' => $differentKey]);
+
+        $this->assertSame($originalKey, $encrypter->key);
+
+        $message2 = 'Another message.';
+        $encoded2 = $encrypter->encrypt($message2);
+        $this->assertSame($message2, $encrypter->decrypt($encoded2, ['key' => $originalKey]));
+
+        $this->assertSame($message, $encrypter->decrypt($encoded, ['key' => $differentKey]));
+    }
+
+    public function testNullKeyOverrideFallsBackToInstanceKey(): void
+    {
+        /** @var SodiumHandler $encrypter */
+        $encrypter = $this->encryption->initialize($this->config);
+
+        $ciphertext = $encrypter->encrypt('message', ['key' => null]);
+
+        $this->assertSame('message', $encrypter->decrypt($ciphertext, ['key' => null]));
+    }
+
+    public function testInvalidKeyLengthThrowsEncryptionException(): void
+    {
+        $this->expectException(EncryptionException::class);
+        /** @var SodiumHandler $encrypter */
+        $encrypter = $this->encryption->initialize($this->config);
+
+        $encrypter->encrypt('message', str_repeat('a', 31));
+    }
+
+    public function testMismatchedBlockSizeThrowsEncryptionException(): void
+    {
+        $this->expectException(EncryptionException::class);
+        /** @var SodiumHandler $encrypter */
+        $encrypter = $this->encryption->initialize($this->config);
+
+        $ciphertext = $encrypter->encrypt('message', ['blockSize' => 16]);
+
+        $encrypter->decrypt($ciphertext, ['blockSize' => 32]);
+    }
+
+    public function testDecryptTamperedMessageThrowsException(): void
+    {
+        $this->expectException(EncryptionException::class);
+        $encrypter = $this->encryption->initialize($this->config);
+
+        $ciphertext = $encrypter->encrypt('message');
+
+        $ciphertext[0] = $ciphertext[0] === 'a' ? 'b' : 'a';
+
+        $encrypter->decrypt($ciphertext);
+    }
+
+    public function testOverrideKeyAsStringWorks(): void
+    {
+        $encrypter = $this->encryption->initialize($this->config);
+        $newKey    = sodium_crypto_secretbox_keygen();
+
+        $ciphertext = $encrypter->encrypt('message', $newKey);
+        $decrypted  = $encrypter->decrypt($ciphertext, $newKey);
+
+        $this->assertSame('message', $decrypted);
     }
 }

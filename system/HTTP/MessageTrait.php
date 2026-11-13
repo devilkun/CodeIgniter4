@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,6 +13,7 @@
 
 namespace CodeIgniter\HTTP;
 
+use CodeIgniter\Exceptions\InvalidArgumentException;
 use CodeIgniter\HTTP\Exceptions\HTTPException;
 
 /**
@@ -25,7 +28,11 @@ trait MessageTrait
     /**
      * List of all HTTP request headers.
      *
-     * @var array<string, Header>
+     * [name => Header]
+     * or
+     * [name => [Header1, Header2]]
+     *
+     * @var array<string, Header|list<Header>>
      */
     protected $headers = [];
 
@@ -34,20 +41,17 @@ trait MessageTrait
      * and their normal-case key as it is in $headers.
      * Used for case-insensitive header access.
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $headerMap = [];
 
-    //--------------------------------------------------------------------
+    // --------------------------------------------------------------------
     // Body
-    //--------------------------------------------------------------------
-
+    // --------------------------------------------------------------------
     /**
      * Sets the body of the current message.
      *
-     * @param mixed $data
-     *
-     * @return $this
+     * @param array<array-key, mixed>|string|null $data
      */
     public function setBody($data): self
     {
@@ -59,9 +63,7 @@ trait MessageTrait
     /**
      * Appends data to the body of the current message.
      *
-     * @param mixed $data
-     *
-     * @return $this
+     * @param string $data
      */
     public function appendBody($data): self
     {
@@ -70,30 +72,32 @@ trait MessageTrait
         return $this;
     }
 
-    //--------------------------------------------------------------------
+    // --------------------------------------------------------------------
     // Headers
-    //--------------------------------------------------------------------
+    // --------------------------------------------------------------------
 
     /**
-     * Populates the $headers array with any headers the getServer knows about.
+     * Populates the $headers array with any headers the server knows about.
      */
     public function populateHeaders(): void
     {
-        $contentType = $_SERVER['CONTENT_TYPE'] ?? getenv('CONTENT_TYPE');
-        if (! empty($contentType)) {
+        $contentType = service('superglobals')->server('CONTENT_TYPE', (string) getenv('CONTENT_TYPE'));
+        if ($contentType !== '') {
             $this->setHeader('Content-Type', $contentType);
         }
         unset($contentType);
 
-        foreach (array_keys($_SERVER) as $key) {
+        $serverArray = service('superglobals')->getServerArray();
+
+        foreach (array_keys($serverArray) as $key) {
             if (sscanf($key, 'HTTP_%s', $header) === 1) {
                 // take SOME_HEADER and turn it into Some-Header
                 $header = str_replace('_', ' ', strtolower($header));
                 $header = str_replace(' ', '-', ucwords($header));
 
-                $this->setHeader($header, $_SERVER[$key]);
+                $this->setHeader($header, $serverArray[$key]);
 
-                // Add us to the header map so we can find them case-insensitively
+                // Add us to the header map, so we can find them case-insensitively
                 $this->headerMap[strtolower($header)] = $header;
             }
         }
@@ -102,14 +106,14 @@ trait MessageTrait
     /**
      * Returns an array containing all Headers.
      *
-     * @return array<string, Header> An array of the Header objects
+     * @return array<string, Header|list<Header>> An array of the Header objects
      */
     public function headers(): array
     {
         // If no headers are defined, but the user is
         // requesting it, then it's likely they want
         // it to be populated so do that...
-        if (empty($this->headers)) {
+        if ($this->headers === []) {
             $this->populateHeaders();
         }
 
@@ -122,7 +126,7 @@ trait MessageTrait
      *
      * @param string $name
      *
-     * @return array|Header|null
+     * @return Header|list<Header>|null
      */
     public function header($name)
     {
@@ -134,15 +138,18 @@ trait MessageTrait
     /**
      * Sets a header and it's value.
      *
-     * @param array|string|null $value
-     *
-     * @return $this
+     * @param array<array-key, string>|string|null $value
      */
     public function setHeader(string $name, $value): self
     {
+        $this->checkMultipleHeaders($name);
+
         $origName = $this->getHeaderName($name);
 
-        if (isset($this->headers[$origName]) && is_array($this->headers[$origName]->getValue())) {
+        if (
+            isset($this->headers[$origName])
+            && is_array($this->headers[$origName]->getValue())
+        ) {
             if (! is_array($value)) {
                 $value = [$value];
             }
@@ -158,10 +165,25 @@ trait MessageTrait
         return $this;
     }
 
+    private function hasMultipleHeaders(string $name): bool
+    {
+        $origName = $this->getHeaderName($name);
+
+        return isset($this->headers[$origName]) && is_array($this->headers[$origName]);
+    }
+
+    private function checkMultipleHeaders(string $name): void
+    {
+        if ($this->hasMultipleHeaders($name)) {
+            throw new InvalidArgumentException(
+                'The header "' . $name . '" already has multiple headers.'
+                . ' You cannot change them. If you really need to change, remove the header first.',
+            );
+        }
+    }
+
     /**
      * Removes a header from the list of headers we track.
-     *
-     * @return $this
      */
     public function removeHeader(string $name): self
     {
@@ -174,11 +196,11 @@ trait MessageTrait
     /**
      * Adds an additional header value to any headers that accept
      * multiple values (i.e. are an array or implement ArrayAccess)
-     *
-     * @return $this
      */
     public function appendHeader(string $name, ?string $value): self
     {
+        $this->checkMultipleHeaders($name);
+
         $origName = $this->getHeaderName($name);
 
         array_key_exists($origName, $this->headers)
@@ -189,13 +211,38 @@ trait MessageTrait
     }
 
     /**
+     * Adds a header (not a header value) with the same name.
+     * Use this only when you set multiple headers with the same name,
+     * typically, for `Set-Cookie`.
+     */
+    public function addHeader(string $name, string $value): static
+    {
+        $origName = $this->getHeaderName($name);
+
+        if (! isset($this->headers[$origName])) {
+            $this->setHeader($name, $value);
+
+            return $this;
+        }
+
+        if (! $this->hasMultipleHeaders($name) && isset($this->headers[$origName])) {
+            $this->headers[$origName] = [$this->headers[$origName]];
+        }
+
+        // Add the header.
+        $this->headers[$origName][] = new Header($origName, $value);
+
+        return $this;
+    }
+
+    /**
      * Adds an additional header value to any headers that accept
      * multiple values (i.e. are an array or implement ArrayAccess)
-     *
-     * @return $this
      */
     public function prependHeader(string $name, string $value): self
     {
+        $this->checkMultipleHeaders($name);
+
         $origName = $this->getHeaderName($name);
 
         $this->headers[$origName]->prependValue($value);
@@ -216,8 +263,6 @@ trait MessageTrait
      * Sets the HTTP protocol version.
      *
      * @throws HTTPException For invalid protocols
-     *
-     * @return $this
      */
     public function setProtocolVersion(string $version): self
     {
@@ -229,7 +274,7 @@ trait MessageTrait
         $version = number_format((float) $version, 1);
 
         if (! in_array($version, $this->validProtocolVersions, true)) {
-            throw HTTPException::forInvalidHTTPProtocol(implode(', ', $this->validProtocolVersions));
+            throw HTTPException::forInvalidHTTPProtocol($version);
         }
 
         $this->protocolVersion = $version;

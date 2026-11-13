@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -16,6 +18,7 @@ use CodeIgniter\Model;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\ReflectionHelper;
+use Tests\Support\Database\Seeds\CITestSeeder;
 
 /**
  * LiveModelTestCase should be in testing Model's features that
@@ -33,12 +36,7 @@ abstract class LiveModelTestCase extends CIUnitTestCase
      */
     protected $model;
 
-    protected $seed = 'Tests\Support\Database\Seeds\CITestSeeder';
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-    }
+    protected $seed = CITestSeeder::class;
 
     protected function tearDown(): void
     {
@@ -49,6 +47,14 @@ abstract class LiveModelTestCase extends CIUnitTestCase
 
     /**
      * Create an instance of Model for use in testing.
+     *
+     * @template T of Model
+     *
+     * @param class-string<T> $modelName
+     *
+     * @return T
+     *
+     * @phpstan-assert T $this->model
      */
     protected function createModel(string $modelName, ?BaseConnection $db = null): Model
     {

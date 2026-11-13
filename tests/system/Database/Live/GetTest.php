@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,24 +13,26 @@
 
 namespace CodeIgniter\Database\Live;
 
+use CodeIgniter\Database\BaseResult;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
+use Config\Feature;
+use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\Database\Seeds\CITestSeeder;
 
 /**
- * @group DatabaseLive
- *
  * @internal
  */
+#[Group('DatabaseLive')]
 final class GetTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
     protected $refresh = true;
+    protected $seed    = CITestSeeder::class;
 
-    protected $seed = 'Tests\Support\Database\Seeds\CITestSeeder';
-
-    public function testGet()
+    public function testGet(): void
     {
         $jobs = $this->db->table('job')->get()->getResult();
 
@@ -39,7 +43,7 @@ final class GetTest extends CIUnitTestCase
         $this->assertSame('Musician', $jobs[3]->name);
     }
 
-    public function testGetWitLimit()
+    public function testGetWitLimit(): void
     {
         $jobs = $this->db->table('job')->get(2, 2)->getResult();
 
@@ -48,7 +52,27 @@ final class GetTest extends CIUnitTestCase
         $this->assertSame('Musician', $jobs[1]->name);
     }
 
-    public function testGetWhereArray()
+    public function testGetWithLimitZero(): void
+    {
+        $config                 = config(Feature::class);
+        $config->limitZeroAsAll = false;
+
+        $jobs = $this->db->table('job')->limit(0)->get()->getResult();
+
+        $this->assertCount(0, $jobs);
+    }
+
+    public function testGetWithLimitZeroAsAll(): void
+    {
+        $config                 = config(Feature::class);
+        $config->limitZeroAsAll = true;
+
+        $jobs = $this->db->table('job')->limit(0)->get()->getResult();
+
+        $this->assertCount(4, $jobs);
+    }
+
+    public function testGetWhereArray(): void
     {
         $jobs = $this->db->table('job')
             ->getWhere(['id' => 1])
@@ -58,7 +82,7 @@ final class GetTest extends CIUnitTestCase
         $this->assertSame('Developer', $jobs[0]->name);
     }
 
-    public function testGetWhereWithLimits()
+    public function testGetWhereWithLimits(): void
     {
         $jobs = $this->db->table('job')
             ->getWhere('id > 1', 1, 1)
@@ -68,22 +92,22 @@ final class GetTest extends CIUnitTestCase
         $this->assertSame('Accountant', $jobs[0]->name);
     }
 
-    public function testGetFieldCount()
+    public function testGetFieldCount(): void
     {
         $jobs = $this->db->table('job')->get()->getFieldCount();
 
         $this->assertSame(6, $jobs);
     }
 
-    public function testGetFieldNames()
+    public function testGetFieldNames(): void
     {
         $jobs = $this->db->table('job')->get()->getFieldNames();
 
-        $this->assertTrue(in_array('name', $jobs, true));
-        $this->assertTrue(in_array('description', $jobs, true));
+        $this->assertContains('name', $jobs);
+        $this->assertContains('description', $jobs);
     }
 
-    public function testGetFieldData()
+    public function testGetFieldData(): void
     {
         $jobs = $this->db->table('job')->get()->getFieldData();
 
@@ -155,7 +179,7 @@ final class GetTest extends CIUnitTestCase
             $this->assertSame('int', $typeTest[0]->type_name); // INTEGER AUTOINC
             $this->assertSame('varchar', $typeTest[1]->type_name);  // VARCHAR
             $this->assertSame('char', $typeTest[2]->type_name);  // CHAR
-            $this->assertSame('text', $typeTest[3]->type_name);  // TEXT
+            $this->assertSame('nvarchar', $typeTest[3]->type_name);  // TEXT
             $this->assertSame('smallint', $typeTest[4]->type_name);  // SMALLINT
             $this->assertSame('int', $typeTest[5]->type_name);  // INTEGER
             $this->assertSame('float', $typeTest[6]->type_name);  // FLOAT
@@ -165,17 +189,20 @@ final class GetTest extends CIUnitTestCase
             $this->assertNull($typeTest[10]->type_name);  // DATETIME
             $this->assertSame('bigint', $typeTest[11]->type_name); // BIGINT
             $this->assertSame('real', $typeTest[12]->type_name);  // REAL
-            $this->assertSame('decimal', $typeTest[13]->type_name);  // DECIMAL
+            $this->assertSame('varchar', $typeTest[13]->type_name);  // ENUM
+            $this->assertSame('decimal', $typeTest[14]->type_name);  // DECIMAL
         }
     }
 
-    public function testGetDataSeek()
+    public function testGetDataSeek(): void
     {
         $data = $this->db->table('job')->get();
 
         if ($this->db->DBDriver === 'SQLite3') {
             $this->expectException(DatabaseException::class);
             $this->expectExceptionMessage('SQLite3 doesn\'t support seeking to other offset.');
+        } elseif ($this->db->DBDriver === 'OCI8') {
+            $this->markTestSkipped('OCI8 does not support data seek.');
         }
 
         $data->dataSeek(3);
@@ -184,7 +211,7 @@ final class GetTest extends CIUnitTestCase
         $this->assertSame('Musician', $details[0]->name);
     }
 
-    public function testGetAnotherDataSeek()
+    public function testGetAnotherDataSeek(): void
     {
         $data = $this->db->table('job')->get();
 
@@ -198,66 +225,74 @@ final class GetTest extends CIUnitTestCase
         $this->assertSame('Musician', $details[3]->name);
     }
 
-    public function testFreeResult()
+    public function testFreeResult(): void
     {
         $data = $this->db->table('job')->where('id', 4)->get();
+        $this->assertInstanceOf(BaseResult::class, $data);
 
         $details = $data->getResult();
-
         $this->assertSame('Musician', $details[0]->name);
 
         $data->freeResult();
-
         $this->assertFalse($data->resultID);
     }
 
-    public function testGetRowWithColumnName()
+    public function testGetRowWithColumnName(): void
     {
         $name = $this->db->table('user')->get()->getRow('name', 'array');
 
         $this->assertSame('Derek Jones', $name);
     }
 
-    public function testGetRowWithReturnType()
+    public function testGetRowWithReturnType(): void
     {
         $user = $this->db->table('user')->get()->getRow(0, 'array');
 
         $this->assertSame('Derek Jones', $user['name']);
     }
 
-    public function testGetRowWithCustomReturnType()
+    public function testGetRowWithCustomReturnType(): void
     {
-        $testClass = new class () {};
+        $testClass = new class () {
+            public mixed $id         = null;
+            public mixed $name       = null;
+            public mixed $email      = null;
+            public mixed $country    = null;
+            public mixed $created_at = null;
+            public mixed $updated_at = null;
+            public mixed $deleted_at = null;
+        };
 
-        $user = $this->db->table('user')->get()->getRow(0, get_class($testClass));
+        $user = $this->db->table('user')->get()->getRow(0, $testClass::class);
 
         $this->assertSame('Derek Jones', $user->name);
     }
 
-    public function testGetFirstRow()
+    public function testGetFirstRow(): void
     {
         $user = $this->db->table('user')->get()->getFirstRow();
 
         $this->assertSame('Derek Jones', $user->name);
     }
 
-    public function testGetLastRow()
+    public function testGetLastRow(): void
     {
         $user = $this->db->table('user')->get()->getLastRow();
 
         $this->assertSame('Chris Martin', $user->name);
     }
 
-    public function testGetNextRow()
+    public function testGetNextRow(): void
     {
         $user = $this->db->table('user')->get()->getNextRow();
 
         $this->assertSame('Ahmadinejad', $user->name);
     }
 
-    public function testGetPreviousRow()
+    public function testGetPreviousRow(): void
     {
         $user = $this->db->table('user')->get();
+        $this->assertInstanceOf(BaseResult::class, $user);
 
         $user->currentRow = 3;
 

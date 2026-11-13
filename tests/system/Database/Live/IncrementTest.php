@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,21 +15,21 @@ namespace CodeIgniter\Database\Live;
 
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
+use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\Database\Seeds\CITestSeeder;
 
 /**
- * @group DatabaseLive
- *
  * @internal
  */
+#[Group('DatabaseLive')]
 final class IncrementTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
     protected $refresh = true;
+    protected $seed    = CITestSeeder::class;
 
-    protected $seed = 'Tests\Support\Database\Seeds\CITestSeeder';
-
-    public function testIncrement()
+    public function testIncrement(): void
     {
         $this->hasInDatabase('job', ['name' => 'incremental', 'description' => '6']);
 
@@ -38,7 +40,7 @@ final class IncrementTest extends CIUnitTestCase
         $this->seeInDatabase('job', ['name' => 'incremental', 'description' => '7']);
     }
 
-    public function testIncrementWithValue()
+    public function testIncrementWithValue(): void
     {
         $this->hasInDatabase('job', ['name' => 'incremental', 'description' => '6']);
 
@@ -49,7 +51,43 @@ final class IncrementTest extends CIUnitTestCase
         $this->seeInDatabase('job', ['name' => 'incremental', 'description' => '8']);
     }
 
-    public function testDecrement()
+    public function testIncrementWithNumericColumns(): void
+    {
+        $this->hasInDatabase('job', ['name' => 'incremental', 'created_at' => 6]);
+
+        $this->db->table('job')
+            ->where('name', 'incremental')
+            ->increment('created_at');
+
+        $this->seeInDatabase('job', ['name' => 'incremental', 'created_at' => 7]);
+    }
+
+    public function testIncrementWithNumericColumnsAndValue(): void
+    {
+        $this->hasInDatabase('job', ['name' => 'incremental', 'created_at' => 6]);
+
+        $this->db->table('job')
+            ->where('name', 'incremental')
+            ->increment('created_at', 2);
+
+        $this->seeInDatabase('job', ['name' => 'incremental', 'created_at' => 8]);
+    }
+
+    public function testResetStateAfterIncrement(): void
+    {
+        $this->hasInDatabase('job', ['name' => 'account1', 'description' => '10']);
+        $this->hasInDatabase('job', ['name' => 'account2', 'description' => '10']);
+
+        $builder = $this->db->table('job');
+
+        $builder->where('name', 'account1')->increment('description');
+        $builder->where('name', 'account2')->increment('description');
+
+        $this->seeInDatabase('job', ['name' => 'account1', 'description' => '11']);
+        $this->seeInDatabase('job', ['name' => 'account2', 'description' => '11']);
+    }
+
+    public function testDecrement(): void
     {
         $this->hasInDatabase('job', ['name' => 'incremental', 'description' => '6']);
 
@@ -60,7 +98,7 @@ final class IncrementTest extends CIUnitTestCase
         $this->seeInDatabase('job', ['name' => 'incremental', 'description' => '5']);
     }
 
-    public function testDecrementWithValue()
+    public function testDecrementWithValue(): void
     {
         $this->hasInDatabase('job', ['name' => 'incremental', 'description' => '6']);
 
@@ -69,5 +107,41 @@ final class IncrementTest extends CIUnitTestCase
             ->decrement('description', 2);
 
         $this->seeInDatabase('job', ['name' => 'incremental', 'description' => '4']);
+    }
+
+    public function testDecrementWithNumericColumns(): void
+    {
+        $this->hasInDatabase('job', ['name' => 'incremental', 'created_at' => 6]);
+
+        $this->db->table('job')
+            ->where('name', 'incremental')
+            ->decrement('created_at');
+
+        $this->seeInDatabase('job', ['name' => 'incremental', 'created_at' => 5]);
+    }
+
+    public function testDecrementWithNumericColumnsAndValue(): void
+    {
+        $this->hasInDatabase('job', ['name' => 'incremental', 'created_at' => 6]);
+
+        $this->db->table('job')
+            ->where('name', 'incremental')
+            ->decrement('created_at', 2);
+
+        $this->seeInDatabase('job', ['name' => 'incremental', 'created_at' => 4]);
+    }
+
+    public function testResetStateAfterDecrement(): void
+    {
+        $this->hasInDatabase('job', ['name' => 'account1', 'description' => '10']);
+        $this->hasInDatabase('job', ['name' => 'account2', 'description' => '10']);
+
+        $builder = $this->db->table('job');
+
+        $builder->where('name', 'account1')->decrement('description');
+        $builder->where('name', 'account2')->decrement('description');
+
+        $this->seeInDatabase('job', ['name' => 'account1', 'description' => '9']);
+        $this->seeInDatabase('job', ['name' => 'account2', 'description' => '9']);
     }
 }

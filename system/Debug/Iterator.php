@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -21,14 +23,14 @@ class Iterator
     /**
      * Stores the tests that we are to run.
      *
-     * @var array
+     * @var array<string, Closure(): mixed>
      */
     protected $tests = [];
 
     /**
      * Stores the results of each of the tests.
      *
-     * @var array
+     * @var array<string, array{time: float, memory: int, n: int}>
      */
     protected $results = [];
 
@@ -37,6 +39,8 @@ class Iterator
      *
      * Tests are simply closures that the user can define any sequence of
      * things to happen during the test.
+     *
+     * @param Closure(): mixed $closure
      *
      * @return $this
      */
@@ -91,7 +95,7 @@ class Iterator
      */
     public function getReport(): string
     {
-        if (empty($this->results)) {
+        if ($this->results === []) {
             return 'No results to display.';
         }
 

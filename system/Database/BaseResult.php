@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,49 +14,43 @@
 namespace CodeIgniter\Database;
 
 use CodeIgniter\Entity\Entity;
+use stdClass;
 
 /**
- * Class BaseResult
+ * @template TConnection
+ * @template TResult
+ *
+ * @implements ResultInterface<TConnection, TResult>
  */
 abstract class BaseResult implements ResultInterface
 {
     /**
-     * Connection ID
-     *
-     * @var object|resource
+     * @var TConnection
      */
     public $connID;
 
     /**
-     * Result ID
-     *
-     * @var bool|object|resource
+     * @var false|TResult
      */
     public $resultID;
 
     /**
-     * Result Array
-     *
-     * @var array[]
+     * @var list<array>
      */
     public $resultArray = [];
 
     /**
-     * Result Object
-     *
-     * @var object[]
+     * @var list<object>
      */
     public $resultObject = [];
 
     /**
-     * Custom Result Object
-     *
-     * @var array
+     * @var array<class-string, list<object>>
      */
     public $customResultObject = [];
 
     /**
-     * Current Row index
+     * Current row index
      *
      * @var int
      */
@@ -68,17 +64,13 @@ abstract class BaseResult implements ResultInterface
     protected $numRows;
 
     /**
-     * Row data
-     *
-     * @var array|null
+     * @var array<string, mixed>|null
      */
     public $rowData;
 
     /**
-     * Constructor
-     *
-     * @param object|resource $connID
-     * @param object|resource $resultID
+     * @param TConnection $connID
+     * @param TResult     $resultID
      */
     public function __construct(&$connID, &$resultID)
     {
@@ -86,13 +78,6 @@ abstract class BaseResult implements ResultInterface
         $this->resultID = $resultID;
     }
 
-    /**
-     * Retrieve the results of the query. Typically an array of
-     * individual data rows, which can be either an 'array', an
-     * 'object', or a custom class name.
-     *
-     * @param string $type The row type. Either 'array', 'object', or a class name to use
-     */
     public function getResult(string $type = 'object'): array
     {
         if ($type === 'array') {
@@ -106,18 +91,13 @@ abstract class BaseResult implements ResultInterface
         return $this->getCustomResultObject($type);
     }
 
-    /**
-     * Returns the results as an array of custom objects.
-     *
-     * @return mixed
-     */
     public function getCustomResultObject(string $className)
     {
         if (isset($this->customResultObject[$className])) {
             return $this->customResultObject[$className];
         }
 
-        if (is_bool($this->resultID) || ! $this->resultID) {
+        if (! $this->isValidResultId()) {
             return [];
         }
 
@@ -154,29 +134,23 @@ abstract class BaseResult implements ResultInterface
             $this->customResultObject[$className][] = $row;
         }
 
-        // @phpstan-ignore-next-line
         return $this->customResultObject[$className];
     }
 
-    /**
-     * Returns the results as an array of arrays.
-     *
-     * If no results, an empty array is returned.
-     */
     public function getResultArray(): array
     {
-        if (! empty($this->resultArray)) {
+        if ($this->resultArray !== []) {
             return $this->resultArray;
         }
 
         // In the event that query caching is on, the result_id variable
         // will not be a valid resource so we'll simply return an empty
         // array.
-        if (is_bool($this->resultID) || ! $this->resultID) {
+        if (! $this->isValidResultId()) {
             return [];
         }
 
-        if ($this->resultObject) {
+        if ($this->resultObject !== []) {
             foreach ($this->resultObject as $row) {
                 $this->resultArray[] = (array) $row;
             }
@@ -195,25 +169,20 @@ abstract class BaseResult implements ResultInterface
         return $this->resultArray;
     }
 
-    /**
-     * Returns the results as an array of objects.
-     *
-     * If no results, an empty array is returned.
-     */
     public function getResultObject(): array
     {
-        if (! empty($this->resultObject)) {
+        if ($this->resultObject !== []) {
             return $this->resultObject;
         }
 
         // In the event that query caching is on, the result_id variable
         // will not be a valid resource so we'll simply return an empty
         // array.
-        if (is_bool($this->resultID) || ! $this->resultID) {
+        if (! $this->isValidResultId()) {
             return [];
         }
 
-        if ($this->resultArray) {
+        if ($this->resultArray !== []) {
             foreach ($this->resultArray as $row) {
                 $this->resultObject[] = (object) $row;
             }
@@ -233,23 +202,12 @@ abstract class BaseResult implements ResultInterface
             $this->resultObject[] = $row;
         }
 
-        // @phpstan-ignore-next-line
         return $this->resultObject;
     }
 
-    /**
-     * Wrapper object to return a row as either an array, an object, or
-     * a custom class.
-     *
-     * If row doesn't exist, returns null.
-     *
-     * @param mixed  $n    The index of the results to return
-     * @param string $type The type of result object. 'array', 'object' or class name.
-     *
-     * @return mixed
-     */
     public function getRow($n = 0, string $type = 'object')
     {
+        // $n is a column name.
         if (! is_numeric($n)) {
             // We cache the row data for subsequent uses
             if (! is_array($this->rowData)) {
@@ -257,7 +215,7 @@ abstract class BaseResult implements ResultInterface
             }
 
             // array_key_exists() instead of isset() to allow for NULL values
-            if (empty($this->rowData) || ! array_key_exists($n, $this->rowData)) {
+            if ($this->rowData === null || ! array_key_exists($n, $this->rowData)) {
                 return null;
             }
 
@@ -275,20 +233,13 @@ abstract class BaseResult implements ResultInterface
         return $this->getCustomRowObject($n, $type);
     }
 
-    /**
-     * Returns a row as a custom class instance.
-     *
-     * If row doesn't exists, returns null.
-     *
-     * @return mixed
-     */
     public function getCustomRowObject(int $n, string $className)
     {
         if (! isset($this->customResultObject[$className])) {
             $this->getCustomResultObject($className);
         }
 
-        if (empty($this->customResultObject[$className])) {
+        if (($this->customResultObject[$className] ?? []) === []) {
             return null;
         }
 
@@ -296,20 +247,13 @@ abstract class BaseResult implements ResultInterface
             $this->currentRow = $n;
         }
 
-        return $this->customResultObject[$className][$this->currentRow];
+        return $this->customResultObject[$className][$this->currentRow] ?? null;
     }
 
-    /**
-     * Returns a single row from the results as an array.
-     *
-     * If row doesn't exist, returns null.
-     *
-     * @return mixed
-     */
     public function getRowArray(int $n = 0)
     {
         $result = $this->getResultArray();
-        if (empty($result)) {
+        if ($result === []) {
             return null;
         }
 
@@ -317,38 +261,23 @@ abstract class BaseResult implements ResultInterface
             $this->currentRow = $n;
         }
 
-        return $result[$this->currentRow];
+        return $result[$this->currentRow] ?? null;
     }
 
-    /**
-     * Returns a single row from the results as an object.
-     *
-     * If row doesn't exist, returns null.
-     *
-     * @return mixed
-     */
     public function getRowObject(int $n = 0)
     {
         $result = $this->getResultObject();
-        if (empty($result)) {
+        if ($result === []) {
             return null;
         }
 
-        if ($n !== $this->customResultObject && isset($result[$n])) {
+        if ($n !== $this->currentRow && isset($result[$n])) {
             $this->currentRow = $n;
         }
 
-        return $result[$this->currentRow];
+        return $result[$this->currentRow] ?? null;
     }
 
-    /**
-     * Assigns an item into a particular column slot.
-     *
-     * @param mixed $key
-     * @param mixed $value
-     *
-     * @return mixed
-     */
     public function setRow($key, $value = null)
     {
         // We cache the row data for subsequent uses
@@ -369,54 +298,34 @@ abstract class BaseResult implements ResultInterface
         }
     }
 
-    /**
-     * Returns the "first" row of the current results.
-     *
-     * @return mixed
-     */
     public function getFirstRow(string $type = 'object')
     {
         $result = $this->getResult($type);
 
-        return (empty($result)) ? null : $result[0];
+        return ($result === []) ? null : $result[0];
     }
 
-    /**
-     * Returns the "last" row of the current results.
-     *
-     * @return mixed
-     */
     public function getLastRow(string $type = 'object')
     {
         $result = $this->getResult($type);
 
-        return (empty($result)) ? null : $result[count($result) - 1];
+        return ($result === []) ? null : $result[count($result) - 1];
     }
 
-    /**
-     * Returns the "next" row of the current results.
-     *
-     * @return mixed
-     */
     public function getNextRow(string $type = 'object')
     {
         $result = $this->getResult($type);
-        if (empty($result)) {
+        if ($result === []) {
             return null;
         }
 
         return isset($result[$this->currentRow + 1]) ? $result[++$this->currentRow] : null;
     }
 
-    /**
-     * Returns the "previous" row of the current results.
-     *
-     * @return mixed
-     */
     public function getPreviousRow(string $type = 'object')
     {
         $result = $this->getResult($type);
-        if (empty($result)) {
+        if ($result === []) {
             return null;
         }
 
@@ -424,14 +333,9 @@ abstract class BaseResult implements ResultInterface
             $this->currentRow--;
         }
 
-        return $result[$this->currentRow];
+        return $result[$this->currentRow] ?? null;
     }
 
-    /**
-     * Returns an unbuffered row and move the pointer to the next row.
-     *
-     * @return mixed
-     */
     public function getUnbufferedRow(string $type = 'object')
     {
         if ($type === 'array') {
@@ -465,50 +369,26 @@ abstract class BaseResult implements ResultInterface
         return $this->numRows = count($this->getResultArray());
     }
 
-    /**
-     * Gets the number of fields in the result set.
-     */
-    abstract public function getFieldCount(): int;
-
-    /**
-     * Generates an array of column names in the result set.
-     */
-    abstract public function getFieldNames(): array;
-
-    /**
-     * Generates an array of objects representing field meta-data.
-     */
-    abstract public function getFieldData(): array;
-
-    /**
-     * Frees the current result.
-     */
-    abstract public function freeResult();
-
-    /**
-     * Moves the internal pointer to the desired offset. This is called
-     * internally before fetching results to make sure the result set
-     * starts at zero.
-     *
-     * @return mixed
-     */
-    abstract public function dataSeek(int $n = 0);
+    private function isValidResultId(): bool
+    {
+        return is_resource($this->resultID) || is_object($this->resultID);
+    }
 
     /**
      * Returns the result set as an array.
      *
      * Overridden by driver classes.
      *
-     * @return mixed
+     * @return array<string, mixed>|false|null
      */
     abstract protected function fetchAssoc();
 
     /**
      * Returns the result set as an object.
      *
-     * Overridden by child classes.
+     * @param class-string $className
      *
-     * @return object
+     * @return false|object
      */
-    abstract protected function fetchObject(string $className = 'stdClass');
+    abstract protected function fetchObject(string $className = stdClass::class);
 }

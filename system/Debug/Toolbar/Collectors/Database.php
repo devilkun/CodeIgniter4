@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,7 +13,10 @@
 
 namespace CodeIgniter\Debug\Toolbar\Collectors;
 
+use CodeIgniter\Database\BaseConnection;
 use CodeIgniter\Database\Query;
+use CodeIgniter\I18n\Time;
+use Config\Toolbar;
 
 /**
  * Collector for the Database tab of the Debug Toolbar.
@@ -49,7 +54,7 @@ class Database extends BaseCollector
     /**
      * Array of database connections.
      *
-     * @var array
+     * @var array<string, BaseConnection>
      */
     protected $connections;
 
@@ -57,7 +62,7 @@ class Database extends BaseCollector
      * The query instances that have been collected
      * through the DBQuery Event.
      *
-     * @var Query[]
+     * @var list<array{query: Query, string: string, duplicate: bool, trace: list<array<string, mixed>>}>
      */
     protected static $queries = [];
 
@@ -73,24 +78,47 @@ class Database extends BaseCollector
      * The static method used during Events to collect
      * data.
      *
-     * @internal param $ array \CodeIgniter\Database\Query
+     * @internal
+     *
+     * @return void
      */
     public static function collect(Query $query)
     {
-        $config = config('Toolbar');
+        $config = config(Toolbar::class);
 
         // Provide default in case it's not set
-        $max = $config->maxQueries ?: 100;
+        $max = ($config->maxQueries === 0) ? 100 : $config->maxQueries;
 
         if (count(static::$queries) < $max) {
-            static::$queries[] = $query;
+            $queryString = $query->getQuery();
+
+            $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+
+            if (! is_cli()) {
+                // when called in the browser, the first two trace arrays
+                // are from the DB event trigger, which are unneeded
+                $backtrace = array_slice($backtrace, 2);
+            }
+
+            static::$queries[] = [
+                'query'     => $query,
+                'string'    => $queryString,
+                'duplicate' => in_array($queryString, array_column(static::$queries, 'string'), true),
+                'trace'     => $backtrace,
+            ];
         }
     }
 
     /**
      * Returns timeline data formatted for the toolbar.
      *
-     * @return array The formatted data or an empty array.
+     * @return list<array{
+     *   name: string,
+     *   component: string,
+     *   start: float|string|null,
+     *   duration: string,
+     *   query?: string,
+     * }>
      */
     protected function formatTimelineData(): array
     {
@@ -110,8 +138,9 @@ class Database extends BaseCollector
             $data[] = [
                 'name'      => 'Query',
                 'component' => 'Database',
-                'start'     => $query->getStartTime(true),
-                'duration'  => $query->getDuration(),
+                'start'     => $query['query']->getStartTime(true),
+                'duration'  => $query['query']->getDuration(),
+                'query'     => $query['query']->debugToolbarDisplay(),
             ];
         }
 
@@ -120,17 +149,67 @@ class Database extends BaseCollector
 
     /**
      * Returns the data of this collector to be formatted in the toolbar
+     *
+     * @return array{queries: list<array{
+     *   hover: string,
+     *   class: string,
+     *   duration: string,
+     *   sql: string,
+     *   trace: list<array<string, mixed>>,
+     *   trace-file: string,
+     *   qid: string
+     * }>}
      */
     public function display(): array
     {
-        $data['queries'] = array_map(static function (Query $query) {
-            return [
-                'duration' => ((float) $query->getDuration(5) * 1000) . ' ms',
-                'sql'      => $query->debugToolbarDisplay(),
-            ];
-        }, static::$queries);
+        return ['queries' => array_map(static function (array $query): array {
+            $isDuplicate = $query['duplicate'] === true;
 
-        return $data;
+            $firstNonSystemLine = '';
+
+            foreach ($query['trace'] as $index => &$line) {
+                // simplify file and line
+                if (isset($line['file'])) {
+                    $line['file'] = clean_path($line['file']) . ':' . $line['line'];
+                    unset($line['line']);
+                } else {
+                    $line['file'] = '[internal function]';
+                }
+
+                // find the first trace line that does not originate from `system/`
+                if ($firstNonSystemLine === '' && ! str_contains($line['file'], 'SYSTEMPATH')) {
+                    $firstNonSystemLine = $line['file'];
+                }
+
+                // simplify function call
+                if (isset($line['class'])) {
+                    $line['function'] = $line['class'] . $line['type'] . $line['function'];
+                    unset($line['class'], $line['type']);
+                }
+
+                if (strrpos($line['function'], '{closure}') === false) {
+                    $line['function'] .= '()';
+                }
+
+                $line['function'] = str_repeat(chr(0xC2) . chr(0xA0), 8) . $line['function'];
+
+                // add index numbering padded with nonbreaking space
+                $indexPadded = str_pad(sprintf('%d', $index + 1), 3, ' ', STR_PAD_LEFT);
+                $indexPadded = preg_replace('/\s/', chr(0xC2) . chr(0xA0), $indexPadded);
+
+                $line['index'] = $indexPadded . str_repeat(chr(0xC2) . chr(0xA0), 4);
+            }
+
+            return [
+                'hover'      => $isDuplicate ? 'This query was called more than once.' : '',
+                'class'      => $isDuplicate ? 'duplicate' : '',
+                'duration'   => ((float) $query['query']->getDuration(5) * 1000) . ' ms',
+                'sql'        => $query['query']->debugToolbarDisplay(),
+                'trace'      => $query['trace'],
+                'trace-file' => $firstNonSystemLine,
+                'qid'        => md5($query['query'] . Time::now()->format('0.u00 U')),
+            ];
+        }, static::$queries)];
     }
 
     /**
@@ -151,14 +230,17 @@ class Database extends BaseCollector
         $this->getConnections();
 
         $queryCount      = count(static::$queries);
+        $uniqueCount     = count(array_filter(static::$queries, static fn ($query): bool => $query['duplicate'] === false));
         $connectionCount = count($this->connections);
 
         return sprintf(
-            '(%d Quer%s across %d Connection%s)',
+            '(%d total Quer%s, %d %s unique across %d Connection%s)',
             $queryCount,
             $queryCount > 1 ? 'ies' : 'y',
+            $uniqueCount,
+            $uniqueCount > 1 ? 'of them' : '',
             $connectionCount,
-            $connectionCount > 1 ? 's' : ''
+            $connectionCount > 1 ? 's' : '',
         );
     }
 
@@ -167,7 +249,7 @@ class Database extends BaseCollector
      */
     public function isEmpty(): bool
     {
-        return empty(static::$queries);
+        return static::$queries === [];
     }
 
     /**
@@ -183,8 +265,17 @@ class Database extends BaseCollector
     /**
      * Gets the connections from the database config
      */
-    private function getConnections()
+    private function getConnections(): void
     {
         $this->connections = \Config\Database::getConnections();
+    }
+
+    /**
+     * Reset collector state for worker mode.
+     * Clears collected queries between requests.
+     */
+    public function reset(): void
+    {
+        static::$queries = [];
     }
 }

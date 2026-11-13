@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,13 +15,25 @@ namespace CodeIgniter\Config;
 
 use CodeIgniter\Test\CIUnitTestCase;
 use Config\Mimes;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class MimesTest extends CIUnitTestCase
 {
-    public function extensionsList()
+    #[DataProvider('provideGuessExtensionFromType')]
+    public function testGuessExtensionFromType(?string $expected, string $mime): void
+    {
+        $this->assertSame($expected, Mimes::guessExtensionFromType($mime));
+    }
+
+    /**
+     * @return iterable<string, array{string|null, string}>
+     */
+    public static function provideGuessExtensionFromType(): iterable
     {
         return [
             'null' => [
@@ -45,19 +59,16 @@ final class MimesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider extensionsList
-     *
-     * @param $expected
-     * @param $ext
-     * @param mixed $mime
-     */
-    public function testGuessExtensionFromType($expected, $mime)
+    #[DataProvider('provideGuessTypeFromExtension')]
+    public function testGuessTypeFromExtension(?string $expected, string $ext): void
     {
-        $this->assertSame($expected, Mimes::guessExtensionFromType($mime));
+        $this->assertSame($expected, Mimes::guessTypeFromExtension($ext));
     }
 
-    public function mimesList()
+    /**
+     * @return iterable<string, array{string|null, string}>
+     */
+    public static function provideGuessTypeFromExtension(): iterable
     {
         return [
             'null' => [
@@ -81,16 +92,5 @@ final class MimesTest extends CIUnitTestCase
                 'BMP',
             ],
         ];
-    }
-
-    /**
-     * @dataProvider mimesList
-     *
-     * @param mixed $expected
-     * @param mixed $ext
-     */
-    public function testGuessTypeFromExtension($expected, $ext)
-    {
-        $this->assertSame($expected, Mimes::guessTypeFromExtension($ext));
     }
 }

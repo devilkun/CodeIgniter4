@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,18 +14,18 @@
 namespace CodeIgniter\Encryption\Handlers;
 
 use CodeIgniter\Encryption\Encryption;
+use CodeIgniter\Encryption\Exceptions\EncryptionException;
 use CodeIgniter\Test\CIUnitTestCase;
 use Config\Encryption as EncryptionConfig;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class OpenSSLHandlerTest extends CIUnitTestCase
 {
-    /**
-     * @var \CodeIgniter\Encryption\Encryption
-     */
-    protected $encryption;
+    private Encryption $encryption;
 
     protected function setUp(): void
     {
@@ -37,13 +39,14 @@ final class OpenSSLHandlerTest extends CIUnitTestCase
     /**
      * Sanity test
      */
-    public function testSanity()
+    public function testSanity(): void
     {
         $params         = new EncryptionConfig();
         $params->driver = 'OpenSSL';
         $params->key    = 'Something other than an empty string';
 
         $encrypter = $this->encryption->initialize($params);
+        $this->assertInstanceOf(OpenSSLHandler::class, $encrypter);
 
         $this->assertSame('AES-256-CTR', $encrypter->cipher);
         $this->assertSame('Something other than an empty string', $encrypter->key);
@@ -55,13 +58,14 @@ final class OpenSSLHandlerTest extends CIUnitTestCase
      * Testing the three methods separately is not realistic as they are
      * designed to work together.
      */
-    public function testSimple()
+    public function testSimple(): void
     {
         $params         = new EncryptionConfig();
         $params->driver = 'OpenSSL';
         $params->key    = '\xd0\xc9\x08\xc4\xde\x52\x12\x6e\xf8\xcc\xdb\x03\xea\xa0\x3a\x5c';
         // Default state (AES-256/Rijndael-256 in CTR mode)
         $encrypter = $this->encryption->initialize($params);
+        $this->assertInstanceOf(OpenSSLHandler::class, $encrypter);
 
         // Was the key properly set?
         $this->assertSame($params->key, $encrypter->key);
@@ -77,16 +81,16 @@ final class OpenSSLHandlerTest extends CIUnitTestCase
     /**
      * Starter key needed
      */
-    public function testWithoutKey()
+    public function testWithoutKey(): void
     {
-        $this->expectException('CodeIgniter\Encryption\Exceptions\EncryptionException');
+        $this->expectException(EncryptionException::class);
 
         $encrypter = new OpenSSLHandler();
         $message1  = 'This is a plain-text message.';
         $encrypter->encrypt($message1, ['key' => '']);
     }
 
-    public function testWithKeyString()
+    public function testWithKeyString(): void
     {
         $key       = 'abracadabra';
         $encrypter = new OpenSSLHandler();
@@ -98,9 +102,9 @@ final class OpenSSLHandlerTest extends CIUnitTestCase
     /**
      * Authentication will fail decrypting with the wrong key
      */
-    public function testWithWrongKeyString()
+    public function testWithWrongKeyString(): void
     {
-        $this->expectException('CodeIgniter\Encryption\Exceptions\EncryptionException');
+        $this->expectException(EncryptionException::class);
 
         $key1      = 'abracadabra';
         $encrypter = new OpenSSLHandler();
@@ -111,7 +115,7 @@ final class OpenSSLHandlerTest extends CIUnitTestCase
         $this->assertNotSame($message1, $encrypter->decrypt($encoded, $key2));
     }
 
-    public function testWithKeyArray()
+    public function testWithKeyArray(): void
     {
         $key       = 'abracadabra';
         $encrypter = new OpenSSLHandler();
@@ -123,9 +127,9 @@ final class OpenSSLHandlerTest extends CIUnitTestCase
     /**
      * Authentication will fail decrypting with the wrong key
      */
-    public function testWithWrongKeyArray()
+    public function testWithWrongKeyArray(): void
     {
-        $this->expectException('CodeIgniter\Encryption\Exceptions\EncryptionException');
+        $this->expectException(EncryptionException::class);
 
         $key1      = 'abracadabra';
         $encrypter = new OpenSSLHandler();
@@ -134,5 +138,30 @@ final class OpenSSLHandlerTest extends CIUnitTestCase
         $this->assertNotSame($message1, $encoded);
         $key2 = 'Holy cow, batman!';
         $this->assertNotSame($message1, $encrypter->decrypt($encoded, ['key' => $key2]));
+    }
+
+    public function testInternalKeyNotModifiedByParams(): void
+    {
+        $params         = new EncryptionConfig();
+        $params->driver = 'OpenSSL';
+        $params->key    = 'original-key-value';
+
+        $encrypter = $this->encryption->initialize($params);
+        $this->assertInstanceOf(OpenSSLHandler::class, $encrypter);
+
+        $key = $encrypter->key;
+        $this->assertSame('original-key-value', $key);
+
+        $message      = 'This is a plain-text message.';
+        $differentKey = 'temporary-param-key';
+        $encoded      = $encrypter->encrypt($message, ['key' => $differentKey]);
+
+        $this->assertSame('original-key-value', $encrypter->key);
+
+        $message2 = 'Another message.';
+        $encoded2 = $encrypter->encrypt($message2);
+        $this->assertSame($message2, $encrypter->decrypt($encoded2));
+
+        $this->assertSame($message, $encrypter->decrypt($encoded, ['key' => $differentKey]));
     }
 }

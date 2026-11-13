@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,21 +16,26 @@ namespace CodeIgniter\Images;
 use CodeIgniter\Images\Exceptions\ImageException;
 use CodeIgniter\Test\CIUnitTestCase;
 use org\bovigo\vfs\vfsStream;
+use org\bovigo\vfs\vfsStreamDirectory;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class ImageTest extends CIUnitTestCase
 {
-    protected $path = 'tests/_support/ci-logo.png';
+    private vfsStreamDirectory $root;
+    private string $start;
+    private Image $image;
 
     protected function setUp(): void
     {
         // create virtual file system
         $this->root = vfsStream::setup();
         // copy our support files
-        $this->origin = '_support/Images/';
-        vfsStream::copyFromFileSystem(TESTPATH . $this->origin, $this->root);
+        $origin = '_support/Images/';
+        vfsStream::copyFromFileSystem(TESTPATH . $origin, $this->root);
         // make subfolders
         $structure = [
             'work'     => [],
@@ -43,7 +50,7 @@ final class ImageTest extends CIUnitTestCase
         $this->image = new Image($this->start . 'ci-logo.png');
     }
 
-    public function testBasicPropertiesInherited()
+    public function testBasicPropertiesInherited(): void
     {
         $this->assertSame('ci-logo.png', $this->image->getFilename());
         $this->assertSame($this->start . 'ci-logo.png', $this->image->getPathname());
@@ -51,7 +58,7 @@ final class ImageTest extends CIUnitTestCase
         $this->assertSame('ci-logo.png', $this->image->getBasename());
     }
 
-    public function testGetProperties()
+    public function testGetProperties(): void
     {
         $expected = [
             'width'      => 155,
@@ -64,7 +71,7 @@ final class ImageTest extends CIUnitTestCase
         $this->assertSame($expected, $this->image->getProperties(true));
     }
 
-    public function testExtractProperties()
+    public function testExtractProperties(): void
     {
         // extract properties from the image
         $this->assertTrue($this->image->getProperties(false));
@@ -76,27 +83,27 @@ final class ImageTest extends CIUnitTestCase
         $this->assertSame('image/png', $this->image->mime);
     }
 
-    public function testCopyDefaultName()
+    public function testCopyDefaultName(): void
     {
         $targetPath = $this->start . 'work';
         $this->image->copy($targetPath);
         $this->assertTrue($this->root->hasChild('work/ci-logo.png'));
     }
 
-    public function testCopyNewName()
+    public function testCopyNewName(): void
     {
         $this->image->copy($this->root->url(), 'new-logo.png');
         $this->assertTrue($this->root->hasChild('new-logo.png'));
     }
 
-    public function testCopyNewFolder()
+    public function testCopyNewFolder(): void
     {
         $targetPath = $this->start . 'work/subfolder';
         $this->image->copy($targetPath, 'new-logo.png');
         $this->assertTrue($this->root->hasChild('work/subfolder/new-logo.png'));
     }
 
-    public function testCopyNowhere()
+    public function testCopyNowhere(): void
     {
         $this->expectException(ImageException::class);
         $targetPath = $this->start . 'work';

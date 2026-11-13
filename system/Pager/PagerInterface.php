@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -42,14 +44,14 @@ interface PagerInterface
      * Stores a set of pagination data for later display. Most commonly used
      * by the model to automate the process.
      *
-     * @return mixed
+     * @return $this
      */
     public function store(string $group, int $page, int $perPage, int $total);
 
     /**
      * Sets the path that an aliased group of links will use.
      *
-     * @return mixed
+     * @return $this
      */
     public function setPath(string $path, string $group = 'default');
 
@@ -113,6 +115,20 @@ interface PagerInterface
      * total, per_page, current_page, last_page, next_url, prev_url, from, to.
      * Does not include the actual data. This data is suitable for adding
      * a 'data' object to with the result set and converting to JSON.
+     *
+     * @return array{
+     *   currentUri: URI,
+     *   uri: URI,
+     *   hasMore: bool,
+     *   total: int|null,
+     *   perPage: int,
+     *   pageCount: int,
+     *   pageSelector: string,
+     *   currentPage: int,
+     *   next: string|null,
+     *   previous: string|null,
+     *   segment: int
+     * }
      */
     public function getDetails(string $group = 'default'): array;
 }

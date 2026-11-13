@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,35 +15,22 @@ namespace CodeIgniter\Test;
 
 use CodeIgniter\HTTP\RedirectResponse;
 use CodeIgniter\HTTP\Response;
-use CodeIgniter\HTTP\ResponseInterface;
 use Config\App;
-use Config\Services;
 use PHPUnit\Framework\AssertionFailedError;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class TestResponseTest extends CIUnitTestCase
 {
-    /**
-     * @var TestResponse
-     */
-    protected $testResponse;
+    private ?TestResponse $testResponse = null;
+    private Response $response;
 
-    /**
-     * @var ResponseInterface
-     */
-    protected $response;
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-    }
-
-    /**
-     * @dataProvider statusCodeProvider
-     */
-    public function testIsOK(int $code, bool $isOk)
+    #[DataProvider('provideHttpStatusCodes')]
+    public function testIsOK(int $code, bool $isOk): void
     {
         $this->getTestResponse('Hello World');
         $this->response->setStatusCode($code);
@@ -51,8 +40,10 @@ final class TestResponseTest extends CIUnitTestCase
 
     /**
      * Provides status codes and their expected "OK"
+     *
+     * @return iterable<array{int, bool}>
      */
-    public function statusCodeProvider(): array
+    public static function provideHttpStatusCodes(): iterable
     {
         return [
             [
@@ -90,7 +81,7 @@ final class TestResponseTest extends CIUnitTestCase
         ];
     }
 
-    public function testIsOKEmpty()
+    public function testIsOKEmpty(): void
     {
         $this->getTestResponse('Hi there');
         $this->response->setStatusCode(200);
@@ -99,7 +90,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->assertFalse($this->testResponse->isOK());
     }
 
-    public function testAssertSee()
+    public function testAssertSee(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
 
@@ -107,7 +98,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertSee('World', 'h1');
     }
 
-    public function testAssertDontSee()
+    public function testAssertDontSee(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
 
@@ -115,7 +106,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertDontSee('World', 'h2');
     }
 
-    public function testAssertSeeElement()
+    public function testAssertSeeElement(): void
     {
         $this->getTestResponse('<h1 class="header">Hello <span>World</span></h1>');
 
@@ -124,7 +115,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertSeeElement('h1.header');
     }
 
-    public function testAssertDontSeeElement()
+    public function testAssertDontSeeElement(): void
     {
         $this->getTestResponse('<h1 class="header">Hello <span>World</span></h1>');
 
@@ -133,7 +124,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertDontSeeElement('h1.para');
     }
 
-    public function testAssertSeeLink()
+    public function testAssertSeeLink(): void
     {
         $this->getTestResponse('<h1 class="header"><a href="http://example.com/hello">Hello</a> <span>World</span></h1>');
 
@@ -141,44 +132,44 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertSeeLink('Hello');
     }
 
-    public function testAssertSeeInField()
+    public function testAssertSeeInField(): void
     {
         $this->getTestResponse('<html><body><input type="text" name="user[name]" value="Foobar"></body></html>');
 
         $this->testResponse->assertSeeInField('user[name]', 'Foobar');
     }
 
-    public function testAssertRedirectFail()
+    public function testAssertRedirectFail(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
 
-        $this->assertFalse($this->testResponse->response() instanceof RedirectResponse);
+        $this->assertNotInstanceOf(RedirectResponse::class, $this->testResponse->response());
         $this->assertFalse($this->testResponse->isRedirect());
         $this->testResponse->assertNotRedirect();
     }
 
-    public function testAssertRedirectSuccess()
+    public function testAssertRedirectSuccess(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
         $this->testResponse->setResponse(new RedirectResponse(new App()));
 
-        $this->assertTrue($this->testResponse->response() instanceof RedirectResponse);
+        $this->assertInstanceOf(RedirectResponse::class, $this->testResponse->response());
         $this->assertTrue($this->testResponse->isRedirect());
         $this->testResponse->assertRedirect();
     }
 
-    public function testAssertRedirectSuccessWithoutRedirectResponse()
+    public function testAssertRedirectSuccessWithoutRedirectResponse(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
         $this->response->redirect('foo/bar');
 
-        $this->assertFalse($this->testResponse->response() instanceof RedirectResponse);
+        $this->assertNotInstanceOf(RedirectResponse::class, $this->testResponse->response());
         $this->assertTrue($this->testResponse->isRedirect());
         $this->testResponse->assertRedirect();
         $this->assertSame('foo/bar', $this->testResponse->getRedirectUrl());
     }
 
-    public function testGetRedirectUrlReturnsUrl()
+    public function testGetRedirectUrlReturnsUrl(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
         $this->testResponse->setResponse(new RedirectResponse(new App()));
@@ -187,14 +178,14 @@ final class TestResponseTest extends CIUnitTestCase
         $this->assertSame('foo/bar', $this->testResponse->getRedirectUrl());
     }
 
-    public function testGetRedirectUrlReturnsNull()
+    public function testGetRedirectUrlReturnsNull(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
 
         $this->assertNull($this->testResponse->getRedirectUrl());
     }
 
-    public function testRedirectToSuccess()
+    public function testRedirectToSuccess(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
         $this->testResponse->setResponse(new RedirectResponse(new App()));
@@ -203,7 +194,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertRedirectTo('foo/bar');
     }
 
-    public function testRedirectToSuccessFullURL()
+    public function testRedirectToSuccessFullURL(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
         $this->testResponse->setResponse(new RedirectResponse(new App()));
@@ -212,7 +203,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertRedirectTo('http://foo.com/bar');
     }
 
-    public function testRedirectToSuccessMixedURL()
+    public function testRedirectToSuccessMixedURL(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
         $this->testResponse->setResponse(new RedirectResponse(new App()));
@@ -221,17 +212,15 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertRedirectTo('http://example.com/index.php/bar');
     }
 
-    public function testAssertStatus()
+    public function testAssertStatus(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>', ['statusCode' => 201]);
 
         $this->testResponse->assertStatus(201);
     }
 
-    /**
-     * @dataProvider statusCodeProvider
-     */
-    public function testAssertIsOK(int $code, bool $isOk)
+    #[DataProvider('provideHttpStatusCodes')]
+    public function testAssertIsOK(int $code, bool $isOk): void
     {
         $this->getTestResponse('<h1>Hello World</h1>', ['statusCode' => $code]);
 
@@ -242,7 +231,7 @@ final class TestResponseTest extends CIUnitTestCase
         }
     }
 
-    public function testAssertSessionHas()
+    public function testAssertSessionHas(): void
     {
         $_SESSION['foo'] = 'bar';
         $this->getTestResponse('<h1>Hello World</h1>');
@@ -251,7 +240,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertSessionHas('foo', 'bar');
     }
 
-    public function testAssertSessionMissing()
+    public function testAssertSessionMissing(): void
     {
         $_SESSION = [];
         $this->getTestResponse('<h1>Hello World</h1>');
@@ -259,7 +248,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertSessionMissing('foo');
     }
 
-    public function testAssertHeader()
+    public function testAssertHeader(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>', [], ['foo' => 'bar']);
 
@@ -267,7 +256,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertHeader('foo', 'bar');
     }
 
-    public function testAssertHeaderMissing()
+    public function testAssertHeaderMissing(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>', [], ['foo' => 'bar']);
 
@@ -275,7 +264,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertHeaderMissing('banana');
     }
 
-    public function testAssertCookie()
+    public function testAssertCookie(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
 
@@ -285,7 +274,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertCookie('foo', 'bar');
     }
 
-    public function testAssertCookieMissing()
+    public function testAssertCookieMissing(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
 
@@ -294,7 +283,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertCookieMissing('bar');
     }
 
-    public function testAssertCookieExpired()
+    public function testAssertCookieExpired(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
 
@@ -303,15 +292,17 @@ final class TestResponseTest extends CIUnitTestCase
         $this->testResponse->assertCookieExpired('foo');
     }
 
-    public function testGetJSON()
+    public function testGetJSON(): void
     {
-        $this->getTestResponse(['foo' => 'bar']);
-        $formatter = Services::format()->getFormatter('application/json');
+        $data = ['foo' => 'bar'];
+        $this->getTestResponse('');
+        $this->response->setJSON($data, true);
 
-        $this->assertSame($formatter->format(['foo' => 'bar']), $this->testResponse->getJSON());
+        $formatter = service('format')->getFormatter('application/json');
+        $this->assertSame($formatter->format($data), $this->testResponse->getJSON());
     }
 
-    public function testEmptyJSON()
+    public function testGetJSONEmptyJSON(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
         $this->response->setJSON('', true);
@@ -320,7 +311,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->assertSame('""', $this->testResponse->getJSON());
     }
 
-    public function testFalseJSON()
+    public function testGetJSONFalseJSON(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
         $this->response->setJSON(false, true);
@@ -329,7 +320,7 @@ final class TestResponseTest extends CIUnitTestCase
         $this->assertSame('false', $this->testResponse->getJSON());
     }
 
-    public function testTrueJSON()
+    public function testGetJSONTrueJSON(): void
     {
         $this->getTestResponse('<h1>Hello World</h1>');
         $this->response->setJSON(true, true);
@@ -338,58 +329,64 @@ final class TestResponseTest extends CIUnitTestCase
         $this->assertSame('true', $this->testResponse->getJSON());
     }
 
-    public function testInvalidJSON()
+    public function testGetJSONInvalidJSON(): void
     {
         $tmp = ' test " case ';
         $this->getTestResponse('<h1>Hello World</h1>');
         $this->response->setBody($tmp);
 
         // this should be FALSE - invalid JSON - will see if this is working that way ;-)
-        $this->assertFalse($this->response->getBody() === $this->testResponse->getJSON());
+        $this->assertNotSame($this->testResponse->getJSON(), $this->response->getBody());
     }
 
-    public function testGetXML()
+    public function testGetXML(): void
     {
-        $this->getTestResponse(['foo' => 'bar']);
-        $formatter = Services::format()->getFormatter('application/xml');
+        $data = ['foo' => 'bar'];
+        $this->getTestResponse('');
+        $this->response->setXML($data);
 
-        $this->assertSame($formatter->format(['foo' => 'bar']), $this->testResponse->getXML());
+        $formatter = service('format')->getFormatter('application/xml');
+        $this->assertSame($formatter->format($data), $this->testResponse->getXML());
     }
 
-    public function testJsonFragment()
+    public function testAssertJSONFragment(): void
     {
-        $this->getTestResponse([
+        $data = [
             'config' => [
                 'key-a',
                 'key-b',
             ],
-        ]);
+        ];
+        $this->getTestResponse('');
+        $this->response->setJSON($data, true);
 
         $this->testResponse->assertJSONFragment(['config' => ['key-a']]);
         $this->testResponse->assertJSONFragment(['config' => ['key-a']], true);
     }
 
-    public function testAssertJSONFragmentFollowingAssertArraySubset()
+    public function testAssertJSONFragmentFollowingAssertArraySubset(): void
     {
-        $this->getTestResponse([
+        $data = [
             'config' => '124',
-        ]);
+        ];
+        $this->getTestResponse('');
+        $this->response->setJSON($data, true);
 
         $this->testResponse->assertJSONFragment(['config' => 124]); // must fail on strict
         $this->testResponse->assertJSONFragment(['config' => '124'], true);
     }
 
-    public function testAssertJSONFragmentFailsGracefullyWhenNotGivenJson()
+    public function testAssertJSONFragmentFailsGracefullyWhenNotGivenJson(): void
     {
         $this->getTestResponse('<h1>Hello World!</h1>');
 
         $this->expectException(AssertionFailedError::class);
-        $this->expectExceptionMessage('Response does not have valid json');
+        $this->expectExceptionMessage('Response is not a valid JSON.');
 
         $this->testResponse->assertJSONFragment(['foo' => 'bar']);
     }
 
-    public function testJsonExact()
+    public function testAssertJsonExactArray(): void
     {
         $data = [
             'config' => [
@@ -397,13 +394,27 @@ final class TestResponseTest extends CIUnitTestCase
                 'key-b',
             ],
         ];
-
-        $this->getTestResponse($data);
+        $this->getTestResponse('');
+        $this->response->setJSON($data, true);
 
         $this->testResponse->assertJSONExact($data);
     }
 
-    public function testJsonExactString()
+    public function testAssertJsonExactObject(): void
+    {
+        $data = (object) [
+            'config' => [
+                'key-a',
+                'key-b',
+            ],
+        ];
+        $this->getTestResponse('');
+        $this->response->setJSON($data, true);
+
+        $this->testResponse->assertJSONExact($data);
+    }
+
+    public function testAssertJsonExactString(): void
     {
         $data = [
             'config' => [
@@ -411,14 +422,18 @@ final class TestResponseTest extends CIUnitTestCase
                 'key-b',
             ],
         ];
+        $this->getTestResponse('');
+        $this->response->setJSON($data, true);
 
-        $this->getTestResponse($data);
-        $formatter = Services::format()->getFormatter('application/json');
-
+        $formatter = service('format')->getFormatter('application/json');
         $this->testResponse->assertJSONExact($formatter->format($data));
     }
 
-    protected function getTestResponse($body = null, array $responseOptions = [], array $headers = [])
+    /**
+     * @param array<string, mixed> $responseOptions
+     * @param array<string, mixed> $headers
+     */
+    protected function getTestResponse(?string $body = null, array $responseOptions = [], array $headers = []): void
     {
         $this->response = new Response(new App());
         $this->response->setBody($body);

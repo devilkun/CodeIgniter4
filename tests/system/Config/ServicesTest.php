@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,6 +13,7 @@
 
 namespace CodeIgniter\Config;
 
+use AfterAutoloadModule\Test;
 use CodeIgniter\Autoloader\Autoloader;
 use CodeIgniter\Autoloader\FileLocator;
 use CodeIgniter\Database\MigrationRunner;
@@ -18,6 +21,7 @@ use CodeIgniter\Debug\Iterator;
 use CodeIgniter\Debug\Timer;
 use CodeIgniter\Debug\Toolbar;
 use CodeIgniter\Email\Email;
+use CodeIgniter\Exceptions\RuntimeException;
 use CodeIgniter\Filters\Filters;
 use CodeIgniter\Format\Format;
 use CodeIgniter\Honeypot\Honeypot;
@@ -32,6 +36,7 @@ use CodeIgniter\Pager\Pager;
 use CodeIgniter\Router\RouteCollection;
 use CodeIgniter\Router\Router;
 use CodeIgniter\Security\Security;
+use CodeIgniter\Session\Handlers\DatabaseHandler;
 use CodeIgniter\Session\Session;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\Mock\MockResponse;
@@ -42,130 +47,143 @@ use CodeIgniter\Validation\Validation;
 use CodeIgniter\View\Cell;
 use CodeIgniter\View\Parser;
 use Config\App;
+use Config\Database as DatabaseConfig;
 use Config\Exceptions;
-use Tests\Support\Config\Services as Services;
+use Config\Security as SecurityConfig;
+use Config\Session as ConfigSession;
+use Config\WorkerMode;
+use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use PHPUnit\Framework\Attributes\WithoutErrorHandler;
+use Tests\Support\Config\Services;
 
 /**
  * @internal
  */
+#[Group('SeparateProcess')]
 final class ServicesTest extends CIUnitTestCase
 {
-    protected $config;
-    protected $original;
+    /**
+     * @var array<array-key, mixed>
+     */
+    private array $original;
 
+    #[WithoutErrorHandler]
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->original = $_SERVER;
-        $this->config   = new App();
     }
 
     protected function tearDown(): void
     {
-        $_SERVER = $this->original;
-        Services::reset();
+        service('superglobals')->setServerArray($this->original);
+        $this->resetServices();
     }
 
-    public function testCanReplaceFrameworkServices()
+    public function testCanReplaceFrameworkServices(): void
     {
-        $this->expectException('RuntimeException');
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Service originated from Tests\Support\Config\Services');
 
         Services::uri('testCanReplaceFrameworkServices');
     }
 
-    public function testNewAutoloader()
+    public function testNewAutoloader(): void
     {
         $actual = Services::autoloader();
         $this->assertInstanceOf(Autoloader::class, $actual);
     }
 
-    public function testNewUnsharedAutoloader()
+    public function testNewUnsharedAutoloader(): void
     {
         $actual = Services::autoloader(false);
         $this->assertInstanceOf(Autoloader::class, $actual);
     }
 
-    public function testNewFileLocator()
+    public function testNewFileLocator(): void
     {
         $actual = Services::locator();
         $this->assertInstanceOf(FileLocator::class, $actual);
     }
 
-    public function testNewUnsharedFileLocator()
+    public function testNewUnsharedFileLocator(): void
     {
         $actual = Services::locator(false);
         $this->assertInstanceOf(FileLocator::class, $actual);
     }
 
-    public function testNewCurlRequest()
+    public function testNewCurlRequest(): void
     {
         $actual = Services::curlrequest();
         $this->assertInstanceOf(CURLRequest::class, $actual);
     }
 
-    public function testNewEmail()
+    public function testNewEmail(): void
     {
         $actual = Services::email();
         $this->assertInstanceOf(Email::class, $actual);
     }
 
-    public function testNewUnsharedEmailWithEmptyConfig()
+    public function testNewUnsharedEmailWithEmptyConfig(): void
     {
         $actual = Services::email(null, false);
         $this->assertInstanceOf(Email::class, $actual);
     }
 
-    public function testNewUnsharedEmailWithNonEmptyConfig()
+    public function testNewUnsharedEmailWithNonEmptyConfig(): void
     {
         $actual = Services::email(new \Config\Email(), false);
         $this->assertInstanceOf(Email::class, $actual);
     }
 
-    public function testNewExceptions()
+    public function testNewExceptions(): void
     {
-        $actual = Services::exceptions(new Exceptions(), Services::request(), Services::response());
+        $actual = Services::exceptions(new Exceptions());
         $this->assertInstanceOf(\CodeIgniter\Debug\Exceptions::class, $actual);
     }
 
-    public function testNewExceptionsWithNullConfig()
+    public function testNewExceptionsWithNullConfig(): void
     {
-        $actual = Services::exceptions(null, null, null, false);
+        $actual = Services::exceptions(null, false);
         $this->assertInstanceOf(\CodeIgniter\Debug\Exceptions::class, $actual);
     }
 
-    public function testNewIterator()
+    public function testNewIterator(): void
     {
         $actual = Services::iterator();
         $this->assertInstanceOf(Iterator::class, $actual);
     }
 
-    public function testNewImage()
+    public function testNewImage(): void
     {
         $actual = Services::image();
         $this->assertInstanceOf(ImageHandlerInterface::class, $actual);
     }
 
-    public function testNewNegotiatorWithNullConfig()
+    public function testNewNegotiatorWithNullConfig(): void
     {
-        $actual = Services::negotiator(null);
+        $actual = Services::negotiator();
         $this->assertInstanceOf(Negotiate::class, $actual);
     }
 
-    public function testNewClirequest()
+    public function testNewClirequest(): void
     {
-        $actual = Services::clirequest(null);
+        $actual = Services::clirequest();
         $this->assertInstanceOf(CLIRequest::class, $actual);
     }
 
-    public function testNewUnsharedClirequest()
+    public function testNewUnsharedClirequest(): void
     {
         $actual = Services::clirequest(null, false);
         $this->assertInstanceOf(CLIRequest::class, $actual);
     }
 
-    public function testNewLanguage()
+    public function testNewLanguage(): void
     {
         $actual = Services::language();
         $this->assertInstanceOf(Language::class, $actual);
@@ -175,114 +193,150 @@ final class ServicesTest extends CIUnitTestCase
         $this->assertSame('la', $actual->getLocale());
     }
 
-    public function testNewUnsharedLanguage()
+    public function testNewUnsharedLanguage(): void
     {
         $actual = Services::language(null, false);
         $this->assertInstanceOf(Language::class, $actual);
-        $this->assertSame('en', $actual->getLocale());
+        $locale = $actual->getLocale();
+        $this->assertSame('en', $locale);
 
         Services::language('la', false);
         $this->assertSame('en', $actual->getLocale());
     }
 
-    public function testNewPager()
+    public function testNewPager(): void
     {
-        $actual = Services::pager(null);
+        $actual = Services::pager();
         $this->assertInstanceOf(Pager::class, $actual);
     }
 
-    public function testNewThrottlerFromShared()
+    public function testNewThrottlerFromShared(): void
     {
         $actual = Services::throttler();
         $this->assertInstanceOf(Throttler::class, $actual);
     }
 
-    public function testNewThrottler()
+    public function testNewThrottler(): void
     {
         $actual = Services::throttler(false);
         $this->assertInstanceOf(Throttler::class, $actual);
     }
 
-    public function testNewToolbar()
+    public function testNewToolbar(): void
     {
-        $actual = Services::toolbar(null);
+        $actual = service('toolbar', null);
         $this->assertInstanceOf(Toolbar::class, $actual);
     }
 
-    public function testNewUri()
+    public function testNewUri(): void
     {
-        $actual = Services::uri(null);
+        $actual = Services::uri();
         $this->assertInstanceOf(URI::class, $actual);
     }
 
-    public function testNewValidation()
+    public function testNewValidation(): void
     {
-        $actual = Services::validation(null);
+        $actual = Services::validation();
         $this->assertInstanceOf(Validation::class, $actual);
     }
 
-    public function testNewViewcellFromShared()
+    public function testNewViewcellFromShared(): void
     {
         $actual = Services::viewcell();
         $this->assertInstanceOf(Cell::class, $actual);
     }
 
-    public function testNewViewcell()
+    public function testNewViewcell(): void
     {
         $actual = Services::viewcell(false);
         $this->assertInstanceOf(Cell::class, $actual);
     }
 
-    /**
-     * @runInSeparateProcess
-     * @preserveGlobalState  disabled
-     */
-    public function testNewSession()
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    public function testNewSession(): void
     {
-        $actual = Services::session($this->config);
+        $actual = Services::session();
         $this->assertInstanceOf(Session::class, $actual);
     }
 
-    /**
-     * @runInSeparateProcess
-     * @preserveGlobalState  disabled
-     */
-    public function testNewSessionWithNullConfig()
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    public function testNewSessionWithNullConfig(): void
     {
         $actual = Services::session(null, false);
         $this->assertInstanceOf(Session::class, $actual);
     }
 
-    /**
-     * @runInSeparateProcess
-     * @preserveGlobalState  disabled
-     */
-    public function testCallStatic()
+    #[DataProvider('provideNewSessionWithInvalidHandler')]
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    public function testNewSessionWithInvalidHandler(string $driver): void
     {
-        // __callStatic should kick in for this but fail
-        $actual = Services::SeSsIoNs(null, false);
-        $this->assertNull($actual);
-        // __callStatic should kick in for this
-        $actual = Services::SeSsIoN(null, false);
-        $this->assertInstanceOf(Session::class, $actual);
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage(sprintf('Invalid session handler "%s" provided.', $driver));
+
+        $config = new ConfigSession();
+
+        $config->driver = $driver;
+        Services::session($config, false);
     }
 
     /**
-     * @runInSeparateProcess
-     * @preserveGlobalState  disabled
+     * @return iterable<string, array{0: string}>
      */
-    public function testCallStaticDirectly()
+    public static function provideNewSessionWithInvalidHandler(): iterable
+    {
+        yield 'just a string' => ['file'];
+
+        yield 'inexistent class' => ['Foo'];
+
+        yield 'other class' => [self::class];
+    }
+
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    public function testNewSessionWithInvalidDatabaseHandler(): void
+    {
+        $driver = config(DatabaseConfig::class)->tests['DBDriver'];
+
+        if (in_array($driver, ['MySQLi', 'Postgre'], true)) {
+            $this->markTestSkipped('This test case does not work with MySQLi and Postgre');
+        }
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage(sprintf('Invalid session database handler "%s" provided. Only "MySQLi" and "Postgre" are supported.', $driver));
+
+        $config = new ConfigSession();
+
+        $config->driver = DatabaseHandler::class;
+        Services::session($config, false);
+    }
+
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    public function testCallStatic(): void
+    {
+        // __callStatic should kick in for this but fail
+        $actual = Services::SeSsIoNs(null, false); // @phpstan-ignore staticMethod.notFound
+        $this->assertNull($actual);
+        // __callStatic should kick in for this
+        $actual = Services::SeSsIoN(null, false); // @phpstan-ignore staticMethod.notFound
+        $this->assertInstanceOf(Session::class, $actual);
+    }
+
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    public function testCallStaticDirectly(): void
     {
         //      $actual = \CodeIgniter\Config\Services::SeSsIoN(null, false); // original
         $actual = Services::__callStatic('SeSsIoN', [null, false]);
         $this->assertInstanceOf(Session::class, $actual);
     }
 
-    /**
-     * @runInSeparateProcess
-     * @preserveGlobalState  disabled
-     */
-    public function testMockInjection()
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    public function testMockInjection(): void
     {
         Services::injectMock('response', new MockResponse(new App()));
         $response = service('response');
@@ -300,11 +354,9 @@ final class ServicesTest extends CIUnitTestCase
         $this->assertSame($response, $response3);
     }
 
-    /**
-     * @runInSeparateProcess
-     * @preserveGlobalState  disabled
-     */
-    public function testReset()
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    public function testReset(): void
     {
         Services::injectMock('response', new MockResponse(new App()));
         $response = service('response');
@@ -316,17 +368,15 @@ final class ServicesTest extends CIUnitTestCase
         $response2 = service('response');
         $this->assertInstanceOf(MockResponse::class, $response2);
 
-        $this->assertTrue($response !== $response2);
+        $this->assertNotSame($response2, $response);
     }
 
-    /**
-     * @runInSeparateProcess
-     * @preserveGlobalState  disabled
-     */
-    public function testResetSingle()
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    public function testResetSingle(): void
     {
         Services::injectMock('response', new MockResponse(new App()));
-        Services::injectMock('security', new MockSecurity(new App()));
+        Services::injectMock('security', new MockSecurity(new SecurityConfig()));
         $response = service('response');
         $security = service('security');
         $this->assertInstanceOf(MockResponse::class, $response);
@@ -343,80 +393,176 @@ final class ServicesTest extends CIUnitTestCase
         $this->assertSame($security, $security2);
     }
 
-    public function testFilters()
+    public function testResetSingleCaseInsensitive(): void
+    {
+        Services::injectMock('response', new MockResponse(new App()));
+        $someService = service('response');
+        $this->assertInstanceOf(MockResponse::class, $someService);
+
+        Services::resetSingle('Response');
+        $someService = service('response');
+        $this->assertNotInstanceOf(MockResponse::class, $someService);
+    }
+
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    public function testResetServiceCache(): void
+    {
+        Services::injectMock('response', new MockResponse(new App()));
+        $response = service('response');
+        $this->assertInstanceOf(MockResponse::class, $response);
+        service('response')->setStatusCode(200);
+
+        Services::autoloader()->addNamespace(
+            'AfterAutoloadModule',
+            SUPPORTPATH . '_AfterAutoloadModule/',
+        );
+        Services::resetServicesCache();
+
+        $response = service('response');
+        $this->assertInstanceOf(MockResponse::class, $response);
+        $this->assertSame(200, $response->getStatusCode());
+
+        $test = service('test');
+        $this->assertInstanceOf(Test::class, $test);
+    }
+
+    public function testFilters(): void
     {
         $result = Services::filters();
         $this->assertInstanceOf(Filters::class, $result);
     }
 
-    public function testFormat()
+    public function testFormat(): void
     {
-        $this->assertInstanceOf(Format::class, Services::format());
+        $this->assertInstanceOf(Format::class, service('format'));
     }
 
-    public function testUnsharedFormat()
+    public function testUnsharedFormat(): void
     {
         $this->assertInstanceOf(Format::class, Services::format(null, false));
     }
 
-    public function testHoneypot()
+    public function testHoneypot(): void
     {
         $result = Services::honeypot();
         $this->assertInstanceOf(Honeypot::class, $result);
     }
 
-    public function testMigrations()
+    public function testMigrations(): void
     {
         $result = Services::migrations();
         $this->assertInstanceOf(MigrationRunner::class, $result);
     }
 
-    public function testParser()
+    public function testParser(): void
     {
         $result = Services::parser();
         $this->assertInstanceOf(Parser::class, $result);
     }
 
-    public function testRedirectResponse()
+    public function testRedirectResponse(): void
     {
-        $result = Services::redirectResponse();
+        $result = Services::redirectresponse();
         $this->assertInstanceOf(RedirectResponse::class, $result);
     }
 
-    public function testRoutes()
+    public function testRoutes(): void
     {
         $result = Services::routes();
         $this->assertInstanceOf(RouteCollection::class, $result);
     }
 
-    public function testRouter()
+    public function testRouter(): void
     {
         $result = Services::router();
         $this->assertInstanceOf(Router::class, $result);
     }
 
-    public function testSecurity()
+    public function testSecurity(): void
     {
+        Services::injectMock('security', new MockSecurity(new SecurityConfig()));
+
         $result = Services::security();
         $this->assertInstanceOf(Security::class, $result);
     }
 
-    public function testTimer()
+    public function testTimer(): void
     {
         $result = Services::timer();
         $this->assertInstanceOf(Timer::class, $result);
     }
 
-    public function testTypography()
+    public function testTypography(): void
     {
         $result = Services::typography();
         $this->assertInstanceOf(Typography::class, $result);
     }
 
-    public function testServiceInstance()
+    public function testServiceInstance(): void
     {
         rename(COMPOSER_PATH, COMPOSER_PATH . '.backup');
         $this->assertInstanceOf(\Config\Services::class, new \Config\Services());
         rename(COMPOSER_PATH . '.backup', COMPOSER_PATH);
+    }
+
+    public function testHas(): void
+    {
+        $this->assertFalse(Services::has('timer'));
+
+        Services::timer();
+
+        $this->assertTrue(Services::has('timer'));
+    }
+
+    public function testHasReturnsFalseForNonExistentService(): void
+    {
+        $this->assertFalse(Services::has('nonexistent'));
+    }
+
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    public function testResetForWorkerMode(): void
+    {
+        $config                     = new WorkerMode();
+        $config->persistentServices = ['timer'];
+
+        Services::cache();
+        Services::timer();
+        Services::typography();
+
+        $this->assertTrue(Services::has('cache'));
+        $this->assertTrue(Services::has('timer'));
+        $this->assertTrue(Services::has('typography'));
+
+        Services::resetForWorkerMode($config);
+
+        $this->assertFalse(Services::has('cache'));
+        $this->assertTrue(Services::has('timer'));
+        $this->assertFalse(Services::has('typography'));
+    }
+
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    public function testReconnectCacheForWorkerMode(): void
+    {
+        Services::cache();
+        $this->assertTrue(Services::has('cache'));
+
+        Services::reconnectCacheForWorkerMode();
+
+        $this->assertTrue(Services::has('cache'));
+    }
+
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    public function testReconnectCacheForWorkerModeWithNoCache(): void
+    {
+        Services::resetSingle('cache');
+        $this->assertFalse(Services::has('cache'));
+
+        Services::reconnectCacheForWorkerMode();
+
+        $this->assertFalse(Services::has('cache'));
     }
 }

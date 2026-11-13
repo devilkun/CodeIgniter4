@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -15,7 +17,7 @@ use CodeIgniter\Database\Migration;
 
 class Migration_Create_test_tables extends Migration
 {
-    public function up()
+    public function up(): void
     {
         // User Table
         $this->forge->addField([
@@ -26,7 +28,7 @@ class Migration_Create_test_tables extends Migration
             'created_at' => ['type' => 'DATETIME', 'null' => true],
             'updated_at' => ['type' => 'DATETIME', 'null' => true],
             'deleted_at' => ['type' => 'DATETIME', 'null' => true],
-        ])->addKey('id', true)->createTable('user', true);
+        ])->addKey('id', true)->addUniqueKey('email')->addKey('country')->createTable('user', true);
 
         // Job Table
         $this->forge->addField([
@@ -45,17 +47,33 @@ class Migration_Create_test_tables extends Migration
             'value' => ['type' => 'VARCHAR', 'constraint' => 400, 'null' => true],
         ])->addKey('id', true)->createTable('misc', true);
 
+        // Team members Table (composite key)
+        $this->forge->addField([
+            'team_id'    => ['type' => 'INTEGER', 'constraint' => 3],
+            'person_id'  => ['type' => 'INTEGER', 'constraint' => 3],
+            'role'       => ['type' => 'VARCHAR', 'constraint' => 40],
+            'status'     => ['type' => 'VARCHAR', 'constraint' => 40],
+            'created_at' => ['type' => 'DATETIME', 'null' => true],
+        ])->addUniqueKey(['team_id', 'person_id'])->createTable('team_members', true);
+
         // Database Type test table
-        // missing types :
-        // TINYINT,MEDIUMINT,BIT,YEAR,BINARY , VARBINARY, TINYTEXT,LONGTEXT,YEAR,JSON,Spatial data types
-        // id must be interger else SQLite3 error on not null for autoinc field
-        $data_type_fields = [
-            'id'              => ['type' => 'INTEGER', 'constraint' => 20, 'auto_increment' => true],
-            'type_varchar'    => ['type' => 'VARCHAR', 'constraint' => 40, 'null' => true],
-            'type_char'       => ['type' => 'CHAR', 'constraint' => 10, 'null' => true],
-            'type_text'       => ['type' => 'TEXT', 'null' => true],
-            'type_smallint'   => ['type' => 'SMALLINT', 'null' => true],
-            'type_integer'    => ['type' => 'INTEGER', 'null' => true],
+        // missing types:
+        //   TINYINT,MEDIUMINT,BIT,YEAR,BINARY,VARBINARY,TINYTEXT,LONGTEXT,
+        //   JSON,Spatial data types
+        // `id` must be INTEGER else SQLite3 error on not null for autoincrement field.
+        $dataTypeFields = [
+            'id'           => ['type' => 'INTEGER', 'constraint' => 20, 'auto_increment' => true],
+            'type_varchar' => ['type' => 'VARCHAR', 'constraint' => 40, 'null' => true],
+            'type_char'    => ['type' => 'CHAR', 'constraint' => 10, 'null' => true],
+            // TEXT should not be used on SQLSRV. It is deprecated.
+            'type_text'     => ['type' => 'TEXT', 'null' => true],
+            'type_smallint' => ['type' => 'SMALLINT', 'null' => true],
+            'type_integer'  => ['type' => 'INTEGER', 'null' => true],
+            // FLOAT should not be used on MySQL.
+            //   CREATE TABLE t (f FLOAT, d DOUBLE);
+            //   INSERT INTO t VALUES(99.9, 99.9);
+            //   SELECT * FROM t WHERE f=99.9; // Empty set
+            //   SELECT * FROM t WHERE d=99.9; // 1 row
             'type_float'      => ['type' => 'FLOAT', 'null' => true],
             'type_numeric'    => ['type' => 'NUMERIC', 'constraint' => '18,2', 'null' => true],
             'type_date'       => ['type' => 'DATE', 'null' => true],
@@ -75,26 +93,26 @@ class Migration_Create_test_tables extends Migration
 
         if ($this->db->DBDriver === 'Postgre') {
             unset(
-                $data_type_fields['type_real'],
-                $data_type_fields['type_decimal']
+                $dataTypeFields['type_real'],
+                $dataTypeFields['type_decimal'],
+                $dataTypeFields['type_enum'],
             );
         }
 
         if ($this->db->DBDriver === 'SQLSRV') {
-            unset($data_type_fields['type_timestamp']);
+            unset($dataTypeFields['type_timestamp']);
+            $dataTypeFields['type_text'] = ['type' => 'NVARCHAR(max)', 'null' => true];
         }
 
         if ($this->db->DBDriver === 'Postgre' || $this->db->DBDriver === 'SQLSRV') {
             unset(
-                $data_type_fields['type_enum'],
-                $data_type_fields['type_set'],
-                $data_type_fields['type_mediumtext'],
-                $data_type_fields['type_double'],
-                $data_type_fields['type_blob']
+                $dataTypeFields['type_set'],
+                $dataTypeFields['type_mediumtext'],
+                $dataTypeFields['type_double'],
             );
         }
 
-        $this->forge->addField($data_type_fields)->addKey('id', true)->createTable('type_test', true);
+        $this->forge->addField($dataTypeFields)->addKey('id', true)->createTable('type_test', true);
 
         // Empty Table
         $this->forge->addField([
@@ -151,9 +169,16 @@ class Migration_Create_test_tables extends Migration
             $this->forge->addKey('id', true);
             $this->forge->createTable('ci_sessions', true);
         }
+
+        if ($this->db->DBDriver === 'OCI8') {
+            $this->db->query('CREATE OR REPLACE PACKAGE calculator AS PROCEDURE plus(left IN NUMBER, right IN NUMBER, result OUT NUMBER); END;');
+            $this->db->query('CREATE OR REPLACE PACKAGE BODY calculator AS PROCEDURE plus(left IN NUMBER, right IN NUMBER, result OUT NUMBER) IS BEGIN result := left + right; END plus; END calculator;');
+            $this->db->query('CREATE OR REPLACE PROCEDURE plus(left IN NUMBER, right IN NUMBER, output OUT NUMBER) IS BEGIN output := left  + right; END;');
+            $this->db->query('CREATE OR REPLACE PROCEDURE one(cursor OUT SYS_REFCURSOR) IS BEGIN open cursor for select 1 AS ONE from DUAL; END;');
+        }
     }
 
-    public function down()
+    public function down(): void
     {
         $this->forge->dropTable('user', true);
         $this->forge->dropTable('job', true);
@@ -164,9 +189,16 @@ class Migration_Create_test_tables extends Migration
         $this->forge->dropTable('stringifypkey', true);
         $this->forge->dropTable('without_auto_increment', true);
         $this->forge->dropTable('ip_table', true);
+        $this->forge->dropTable('migrations_lock', true);
 
         if (in_array($this->db->DBDriver, ['MySQLi', 'Postgre'], true)) {
             $this->forge->dropTable('ci_sessions', true);
+        }
+
+        if ($this->db->DBDriver === 'OCI8') {
+            $this->db->query('DROP PROCEDURE one');
+            $this->db->query('DROP PROCEDURE plus');
+            $this->db->query('DROP PACKAGE BODY calculator');
         }
     }
 }

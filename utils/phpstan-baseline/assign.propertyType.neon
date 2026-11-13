@@ -1,0 +1,8 @@
+# total 1 error
+
+parameters:
+    ignoreErrors:
+        -
+            message: '#^Property CodeIgniter\\CodeIgniter\:\:\$request \(CodeIgniter\\HTTP\\CLIRequest\|CodeIgniter\\HTTP\\IncomingRequest\|null\) does not accept CodeIgniter\\HTTP\\RequestInterface\.$#'
+            count: 1
+            path: ../../system/CodeIgniter.php

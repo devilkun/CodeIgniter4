@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -53,7 +55,7 @@ class ModelGenerator extends BaseCommand
     /**
      * The Command's Arguments
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $arguments = [
         'name' => 'The model class name.',
@@ -62,7 +64,7 @@ class ModelGenerator extends BaseCommand
     /**
      * The Command's Options
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $options = [
         '--table'     => 'Supply a table name. Default: "the lowercased plural of the class name".',
@@ -83,7 +85,7 @@ class ModelGenerator extends BaseCommand
         $this->template  = 'model.tpl.php';
 
         $this->classNameLang = 'CLI.generator.className.model';
-        $this->execute($params);
+        $this->generateClass($params);
     }
 
     /**
@@ -101,9 +103,8 @@ class ModelGenerator extends BaseCommand
             $baseClass = $match[1];
         }
 
-        $table   = is_string($table) ? $table : plural(strtolower($baseClass));
-        $dbGroup = is_string($dbGroup) ? $dbGroup : 'default';
-        $return  = is_string($return) ? $return : 'array';
+        $table  = is_string($table) ? $table : plural(strtolower($baseClass));
+        $return = is_string($return) ? $return : 'array';
 
         if (! in_array($return, ['array', 'object', 'entity'], true)) {
             // @codeCoverageIgnoreStart
@@ -113,22 +114,27 @@ class ModelGenerator extends BaseCommand
         }
 
         if ($return === 'entity') {
-            $return = str_replace('Models', 'Entities', $class);
+            // Build the fully-qualified entity class from the model class so
+            // that the generated Entity keeps any sub-namespaces (eg. Admin).
+            $entityClass = str_replace('Models', 'Entities', $class);
 
-            if (preg_match('/^(\S+)Model$/i', $return, $match) === 1) {
-                $return = $match[1];
+            if (preg_match('/^(\S+)Model$/i', $entityClass, $match) === 1) {
+                $entityClass = $match[1];
 
                 if ($this->getOption('suffix')) {
-                    $return .= 'Entity';
+                    $entityClass .= 'Entity';
                 }
             }
 
-            $return = '\\' . trim($return, '\\') . '::class';
-            $this->call('make:entity', array_merge([$baseClass], $this->params));
+            // Call the entity generator with the fully-qualified class name so
+            // it ends up under the correct sub-namespace/folder (eg. Admin).
+            $this->call('make:entity', array_merge([trim($entityClass, '\\')], $this->params));
+
+            $return = '\\' . trim($entityClass, '\\') . '::class';
         } else {
             $return = "'{$return}'";
         }
 
-        return $this->parseTemplate($class, ['{table}', '{dbGroup}', '{return}'], [$table, $dbGroup, $return]);
+        return $this->parseTemplate($class, ['{dbGroup}', '{table}', '{return}'], [$dbGroup, $table, $return], compact('dbGroup'));
     }
 }

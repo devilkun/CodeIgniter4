@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -16,20 +18,18 @@ use CodeIgniter\Database\Exceptions\DatabaseException;
 
 /**
  * Utils for SQLite3
+ *
+ * @extends BaseUtils<Connection>
  */
 class Utils extends BaseUtils
 {
     /**
-     * OPTIMIZE TABLE statement
-     *
-     * @var string
+     * @var bool|string
      */
     protected $optimizeTable = 'REINDEX %s';
 
     /**
-     * Platform dependent version of the backup function.
-     *
-     * @return mixed
+     * @return never
      */
     public function _backup(?array $prefs = null)
     {

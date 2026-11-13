@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,14 +14,19 @@
 namespace CodeIgniter\HTTP;
 
 use CodeIgniter\Test\CIUnitTestCase;
+use Error;
+use InvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use stdClass;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class HeaderTest extends CIUnitTestCase
 {
-    public function testHeaderStoresBasics()
+    public function testHeaderStoresBasics(): void
     {
         $name  = 'foo';
         $value = 'bar';
@@ -30,7 +37,7 @@ final class HeaderTest extends CIUnitTestCase
         $this->assertSame($value, $header->getValue());
     }
 
-    public function testHeaderStoresBasicsWithNull()
+    public function testHeaderStoresBasicsWithNull(): void
     {
         $name  = 'foo';
         $value = null;
@@ -41,7 +48,29 @@ final class HeaderTest extends CIUnitTestCase
         $this->assertSame('', $header->getValue());
     }
 
-    public function testHeaderStoresArrayValues()
+    public function testHeaderStoresBasicWithInt(): void
+    {
+        $name  = 'foo';
+        $value = 123;
+
+        $header = new Header($name, $value);
+
+        $this->assertSame($name, $header->getName());
+        $this->assertSame((string) $value, $header->getValue());
+    }
+
+    public function testHeaderStoresBasicWithObject(): void
+    {
+        $this->expectException(Error::class);
+        $this->expectExceptionMessage('Object of class stdClass could not be converted to string');
+
+        $name  = 'foo';
+        $value = new stdClass();
+
+        new Header($name, $value); // @phpstan-ignore argument.type
+    }
+
+    public function testHeaderStoresArrayValues(): void
     {
         $name  = 'foo';
         $value = [
@@ -55,12 +84,26 @@ final class HeaderTest extends CIUnitTestCase
         $this->assertSame($value, $header->getValue());
     }
 
-    public function testHeaderSetters()
+    public function testHeaderStoresArrayKeyValue(): void
+    {
+        $name  = 'foo';
+        $value = [
+            'key' => 'val',
+        ];
+
+        $header = new Header($name, $value);
+
+        $this->assertSame($name, $header->getName());
+        $this->assertSame($value, $header->getValue());
+        $this->assertSame('key=val', $header->getValueLine());
+    }
+
+    public function testHeaderSetters(): void
     {
         $name  = 'foo';
         $value = [
             'bar',
-            'baz',
+            123,
         ];
 
         $header = new Header($name);
@@ -72,10 +115,10 @@ final class HeaderTest extends CIUnitTestCase
         $header->setName($name)->setValue($value);
         $this->assertSame($name, $header->getName());
         $this->assertSame($value, $header->getValue());
-        $this->assertSame($name . ': bar, baz', (string) $header);
+        $this->assertSame($name . ': bar, 123', (string) $header);
     }
 
-    public function testHeaderAppendsValueSkippedForNull()
+    public function testHeaderAppendsValueSkippedForNull(): void
     {
         $name     = 'foo';
         $value    = 'bar';
@@ -83,13 +126,13 @@ final class HeaderTest extends CIUnitTestCase
 
         $header = new Header($name, $value);
 
-        $header->appendValue(null);
+        $header->appendValue();
 
         $this->assertSame($name, $header->getName());
         $this->assertSame($expected, $header->getValue());
     }
 
-    public function testHeaderConvertsSingleToArray()
+    public function testHeaderConvertsSingleToArray(): void
     {
         $name  = 'foo';
         $value = 'bar';
@@ -107,7 +150,7 @@ final class HeaderTest extends CIUnitTestCase
         $this->assertSame($expected, $header->getValue());
     }
 
-    public function testHeaderPrependsValueSkippedForNull()
+    public function testHeaderPrependsValueSkippedForNull(): void
     {
         $name     = 'foo';
         $value    = 'bar';
@@ -115,13 +158,13 @@ final class HeaderTest extends CIUnitTestCase
 
         $header = new Header($name, $value);
 
-        $header->prependValue(null);
+        $header->prependValue();
 
         $this->assertSame($name, $header->getName());
         $this->assertSame($expected, $header->getValue());
     }
 
-    public function testHeaderPrependsValue()
+    public function testHeaderPrependsValue(): void
     {
         $name  = 'foo';
         $value = 'bar';
@@ -139,7 +182,7 @@ final class HeaderTest extends CIUnitTestCase
         $this->assertSame($expected, $header->getValue());
     }
 
-    public function testHeaderLineSimple()
+    public function testHeaderLineSimple(): void
     {
         $name  = 'foo';
         $value = [
@@ -155,32 +198,19 @@ final class HeaderTest extends CIUnitTestCase
         $this->assertSame($expected, $header->getValueLine());
     }
 
-    public function testHeaderLineValueNotStringOrArray()
-    {
-        $name  = 'foo';
-        $value = new stdClass();
-
-        $expected = '';
-
-        $header = new Header($name, $value);
-
-        $this->assertSame($name, $header->getName());
-        $this->assertSame($expected, $header->getValueLine());
-    }
-
-    public function testHeaderSetValueWithNullWillMarkAsEmptyString()
+    public function testHeaderSetValueWithNullWillMarkAsEmptyString(): void
     {
         $name     = 'foo';
         $expected = '';
 
         $header = new Header($name);
-        $header->setValue('bar')->setValue(null);
+        $header->setValue('bar')->setValue();
 
         $this->assertSame($name, $header->getName());
         $this->assertSame($expected, $header->getValueLine());
     }
 
-    public function testHeaderLineWithArrayValues()
+    public function testHeaderLineWithArrayValues(): void
     {
         $name = 'foo';
 
@@ -194,7 +224,7 @@ final class HeaderTest extends CIUnitTestCase
         $this->assertSame($expected, $header->getValueLine());
     }
 
-    public function testHeaderToStringShowsEntireHeader()
+    public function testHeaderToStringShowsEntireHeader(): void
     {
         $name = 'foo';
 
@@ -205,5 +235,84 @@ final class HeaderTest extends CIUnitTestCase
         $header->setValue('bar')->appendValue(['baz' => 'fuzz']);
 
         $this->assertSame($expected, (string) $header);
+    }
+
+    /**
+     * @param string $name
+     */
+    #[DataProvider('provideInvalidHeaderNames')]
+    public function testInvalidHeaderNames($name): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new Header($name, 'text/html');
+    }
+
+    /**
+     * @return list<list<string>>
+     */
+    public static function provideInvalidHeaderNames(): iterable
+    {
+        return [
+            ["Content-Type\r\n\r\n"],
+            ["Content-Type\r\n"],
+            ["Content-Type\n"],
+            ["\tContent-Type\t"],
+            ["\n\nContent-Type\n\n"],
+            ["\r\nContent-Type"],
+            ["\nContent-Type"],
+            ["Content\r\n-Type"],
+            ["\n"],
+            ["\r\n"],
+            ["\t"],
+            ['   Content-Type   '],
+            ['Content - Type'],
+            ["Content\x00Type"],
+            [':Content-Type'],
+            ['Content-Type:'],
+            [''],
+        ];
+    }
+
+    /**
+     * @param array<array-key, array<string, string>|string>|string|null $value
+     */
+    #[DataProvider('provideInvalidHeaderValues')]
+    public function testInvalidHeaderValues($value): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new Header('X-Test-Header', $value);
+    }
+
+    /**
+     * @return list<list<array<array-key, string>|string>>
+     */
+    public static function provideInvalidHeaderValues(): iterable
+    {
+        return [
+            ["Header\n Value"],
+            ["Header\r\n Value"],
+            ["Header\r Value"],
+            ["Header Value\n"],
+            ["\nHeader Value"],
+            ["Header Value\r\n"],
+            ["\n\rHeader Value"],
+            ["\n\nHeader Value\n\n"],
+            [
+                ["Header\n Value"],
+                ["Header\r\n Value"],
+            ],
+            [
+                [
+                    "Header\n" => 'Value',
+                ],
+            ],
+            [
+                [
+                    'Header' => "Value\r\n",
+                ],
+            ],
+        ];
     }
 }

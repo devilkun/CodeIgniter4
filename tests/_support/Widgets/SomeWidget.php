@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,7 +13,9 @@
 
 namespace Tests\Support\Widgets;
 
+use stdClass;
+
 // Extends a trivial class to test the instanceOf directive
-class SomeWidget extends \stdClass
+class SomeWidget extends stdClass
 {
 }

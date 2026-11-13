@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -9,10 +11,16 @@
  * the LICENSE file that was distributed with this source code.
  */
 
-class RegistrarConfig extends \CodeIgniter\Config\BaseConfig
+use CodeIgniter\Config\BaseConfig;
+
+class RegistrarConfig extends BaseConfig
 {
-    public $foo = 'bar';
-    public $bar = [
+    public string $foo = 'bar';
+
+    /**
+     * @var list<string>
+     */
+    public array $bar = [
         'baz',
     ];
 }

@@ -1,0 +1,57 @@
+name: SCSS Compilation
+
+on:
+  pull_request:
+    branches:
+      - 'develop'
+      - '4.*'
+    paths:
+      - '**.scss'
+      - '**.css'
+      - '.github/workflows/test-scss.yml'
+
+  push:
+    branches:
+      - 'develop'
+      - '4.*'
+    paths:
+      - '**.scss'
+      - '**.css'
+      - '.github/workflows/test-scss.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Compilation of SCSS (Dart Sass)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: Install Dart Sass
+        run: |
+          npm install --global sass
+          sass --version
+
+      - name: Run Dart Sass
+        run: sass --no-source-map admin/css/debug-toolbar/toolbar.scss system/Debug/Toolbar/Views/toolbar.css
+
+      - name: Check for changed CSS files
+        run: |
+          if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+            echo "Your changes to the SCSS files did not match the expected CSS output."
+            git diff-files --patch
+            exit 1
+          fi

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,27 +16,37 @@ namespace CodeIgniter\HTTP\Files;
 use CodeIgniter\HTTP\Exceptions\HTTPException;
 use CodeIgniter\Test\CIUnitTestCase;
 use org\bovigo\vfs\vfsStream;
+use org\bovigo\vfs\vfsStreamDirectory;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class FileMovingTest extends CIUnitTestCase
 {
+    private ?vfsStreamDirectory $root;
+    private string $destination;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->root = vfsStream::setup();
-        $this->path = '_support/Files/';
-        vfsStream::copyFromFileSystem(TESTPATH . $this->path, $this->root);
-        $this->start = $this->root->url() . '/';
+        $path       = '_support/Files/';
+        vfsStream::copyFromFileSystem(TESTPATH . $path, $this->root);
+        $start = $this->root->url() . '/';
 
-        $this->destination = $this->start . 'destination';
+        $this->destination = $start . 'destination';
         if (is_dir($this->destination)) {
             rmdir($this->destination);
         }
 
-        $_FILES = [];
+        service('superglobals')->setFilesArray([]);
+
+        // Set the mock's return value to true
+        move_uploaded_file('', '', true);
     }
 
     protected function tearDown(): void
@@ -49,26 +61,25 @@ final class FileMovingTest extends CIUnitTestCase
         }
     }
 
-    public function testMove()
+    public function testMove(): void
     {
         $finalFilename = 'fileA';
-
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile1' => [
                 'name'     => $finalFilename . '.txt',
                 'type'     => 'text/plain',
                 'size'     => 124,
-                'tmp_name' => '/tmp/fileA.txt',
+                'tmp_name' => sys_get_temp_dir() . '/fileA.txt',
                 'error'    => 0,
             ],
             'userfile2' => [
                 'name'     => 'fileA.txt',
                 'type'     => 'text/csv',
                 'size'     => 248,
-                'tmp_name' => '/tmp/fileB.txt',
+                'tmp_name' => sys_get_temp_dir() . '/fileB.txt',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
@@ -76,7 +87,6 @@ final class FileMovingTest extends CIUnitTestCase
         $this->assertTrue($collection->hasFile('userfile2'));
 
         $destination = $this->destination;
-
         // Create the destination if not exists
         if (! is_dir($destination)) {
             mkdir($destination, 0777, true);
@@ -89,35 +99,232 @@ final class FileMovingTest extends CIUnitTestCase
 
         $this->assertTrue($this->root->hasChild('destination/' . $finalFilename . '.txt'));
         $this->assertTrue($this->root->hasChild('destination/' . $finalFilename . '_1.txt'));
+        $this->assertSame(0666 & ~umask(), $this->root->getChild('destination/' . $finalFilename . '.txt')->getPermissions());
     }
 
-    public function testMoveOverwriting()
+    public function testMoveSanitizesClientNameByDefault(): void
+    {
+        service('superglobals')->setFilesArray([
+            'userfile' => [
+                'name'     => '../../public/shell.php',
+                'type'     => 'text/plain',
+                'size'     => 124,
+                'tmp_name' => sys_get_temp_dir() . '/fileA.txt',
+                'error'    => 0,
+            ],
+        ]);
+
+        $collection = new FileCollection();
+
+        $this->assertTrue($collection->hasFile('userfile'));
+
+        $destination = $this->destination;
+        if (! is_dir($destination)) {
+            mkdir($destination, 0777, true);
+        }
+
+        $file = $collection->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
+
+        // No second argument: the client-provided name must be sanitized.
+        $file->move($destination);
+
+        $this->assertSame('publicshell.php', $file->getName());
+        $this->assertTrue($this->root->hasChild('destination/publicshell.php'));
+        $this->assertFalse($this->root->hasChild('public/shell.php'));
+    }
+
+    /**
+     * On Windows these names may resolve to a different file or an NTFS stream.
+     */
+    #[DataProvider('provideMoveRejectsUnsafeDefaultNameOnWindows')]
+    public function testMoveRejectsUnsafeDefaultNameOnWindows(string $clientName): void
+    {
+        is_windows(true);
+
+        service('superglobals')->setFilesArray([
+            'userfile' => [
+                'name'     => $clientName,
+                'type'     => 'text/plain',
+                'size'     => 124,
+                'tmp_name' => sys_get_temp_dir() . '/fileA.txt',
+                'error'    => 0,
+            ],
+        ]);
+
+        $file = (new FileCollection())->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
+
+        try {
+            $file->move($this->destination);
+            $this->fail('HTTPException was not thrown.');
+        } catch (HTTPException $e) {
+            $this->assertSame(lang('HTTP.invalidFileName'), $e->getMessage());
+        }
+
+        $this->assertFalse($file->hasMoved());
+        $this->assertSame($clientName, $file->getName());
+        $this->assertSame([], array_values(array_diff(scandir($this->destination), ['.', '..', 'index.html'])));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function provideMoveRejectsUnsafeDefaultNameOnWindows(): iterable
+    {
+        yield 'single period' => ['shell.php.'];
+
+        yield 'double period' => ['shell.php..'];
+
+        yield 'triple period' => ['shell.php...'];
+
+        yield 'space then periods' => ['shell.php ..'];
+
+        yield 'period then space' => ['shell.php. '];
+
+        yield 'trailing space' => ['shell.php '];
+
+        yield 'two trailing spaces' => ['shell.php  '];
+
+        yield 'periods only' => ['..'];
+
+        yield 'NTFS stream' => ['shell.php:stream'];
+
+        yield 'NTFS stream in text file' => ['notes.txt:metadata'];
+    }
+
+    #[DataProvider('provideMoveKeepsWindowsUnsafeDefaultNameOutsideWindows')]
+    public function testMoveKeepsWindowsUnsafeDefaultNameOutsideWindows(string $clientName): void
+    {
+        is_windows(false);
+
+        service('superglobals')->setFilesArray([
+            'userfile' => [
+                'name'     => $clientName,
+                'type'     => 'text/plain',
+                'size'     => 124,
+                'tmp_name' => sys_get_temp_dir() . '/fileA.txt',
+                'error'    => 0,
+            ],
+        ]);
+
+        $file = (new FileCollection())->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
+
+        $this->assertTrue($file->move($this->destination));
+        $this->assertSame($clientName, $file->getName());
+        $this->assertTrue($this->root->hasChild('destination/' . $clientName));
+    }
+
+    /**
+     * A trailing space is not covered here: vfsStream trims trailing whitespace from paths.
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function provideMoveKeepsWindowsUnsafeDefaultNameOutsideWindows(): iterable
+    {
+        yield 'trailing periods' => ['notes.txt..'];
+
+        yield 'colon' => ['meeting 10:30.txt'];
+    }
+
+    public function testMoveAcceptsDefaultNameWithInnerPeriodsAndSpaces(): void
+    {
+        is_windows(true);
+
+        service('superglobals')->setFilesArray([
+            'userfile' => [
+                'name'     => 'my file.v1..final.txt',
+                'type'     => 'text/plain',
+                'size'     => 124,
+                'tmp_name' => sys_get_temp_dir() . '/fileA.txt',
+                'error'    => 0,
+            ],
+        ]);
+
+        $file = (new FileCollection())->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
+
+        $this->assertTrue($file->move($this->destination));
+        $this->assertSame('my file.v1..final.txt', $file->getName());
+        $this->assertTrue($this->root->hasChild('destination/my file.v1..final.txt'));
+    }
+
+    public function testMoveAcceptsSafeCallerSuppliedName(): void
+    {
+        is_windows(true);
+
+        service('superglobals')->setFilesArray([
+            'userfile' => [
+                'name'     => 'shell.php..',
+                'type'     => 'text/plain',
+                'size'     => 124,
+                'tmp_name' => sys_get_temp_dir() . '/fileA.txt',
+                'error'    => 0,
+            ],
+        ]);
+
+        $file = (new FileCollection())->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
+
+        $this->assertTrue($file->move($this->destination, 'avatar.txt'));
+        $this->assertSame('avatar.txt', $file->getName());
+    }
+
+    public function testMoveRejectsUnsafeCallerSuppliedNameOnWindows(): void
+    {
+        is_windows(true);
+
+        service('superglobals')->setFilesArray([
+            'userfile' => [
+                'name'     => 'avatar.txt',
+                'type'     => 'text/plain',
+                'size'     => 124,
+                'tmp_name' => sys_get_temp_dir() . '/fileA.txt',
+                'error'    => 0,
+            ],
+        ]);
+
+        $file = (new FileCollection())->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
+
+        try {
+            $file->move($this->destination, 'shell.php..');
+            $this->fail('HTTPException was not thrown.');
+        } catch (HTTPException $e) {
+            $this->assertSame(lang('HTTP.invalidFileName'), $e->getMessage());
+        }
+
+        $this->assertFalse($file->hasMoved());
+        $this->assertSame('avatar.txt', $file->getName());
+    }
+
+    public function testMoveOverwriting(): void
     {
         $finalFilename = 'file_with_delimiters_underscore';
-
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile1' => [
                 'name'     => $finalFilename . '.txt',
                 'type'     => 'text/plain',
                 'size'     => 124,
-                'tmp_name' => '/tmp/fileA.txt',
+                'tmp_name' => sys_get_temp_dir() . '/fileA.txt',
                 'error'    => 0,
             ],
             'userfile2' => [
                 'name'     => $finalFilename . '.txt',
                 'type'     => 'text/csv',
                 'size'     => 248,
-                'tmp_name' => '/tmp/fileB.txt',
+                'tmp_name' => sys_get_temp_dir() . '/fileB.txt',
                 'error'    => 0,
             ],
             'userfile3' => [
                 'name'     => $finalFilename . '.txt',
                 'type'     => 'text/csv',
                 'size'     => 248,
-                'tmp_name' => '/tmp/fileC.txt',
+                'tmp_name' => sys_get_temp_dir() . '/fileC.txt',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
@@ -126,7 +333,6 @@ final class FileMovingTest extends CIUnitTestCase
         $this->assertTrue($collection->hasFile('userfile3'));
 
         $destination = $this->destination;
-
         // Create the destination if not exists
         if (! is_dir($destination)) {
             mkdir($destination, 0777, true);
@@ -143,26 +349,24 @@ final class FileMovingTest extends CIUnitTestCase
         $this->assertFileExists($destination . '/' . $finalFilename . '.txt');
     }
 
-    public function testMoved()
+    public function testMoved(): void
     {
         $finalFilename = 'fileA';
-
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile1' => [
                 'name'     => $finalFilename . '.txt',
                 'type'     => 'text/plain',
                 'size'     => 124,
-                'tmp_name' => '/tmp/fileA.txt',
+                'tmp_name' => sys_get_temp_dir() . '/fileA.txt',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
         $this->assertTrue($collection->hasFile('userfile1'));
 
         $destination = $this->destination;
-
         // Create the destination if not exists
         if (! is_dir($destination)) {
             mkdir($destination, 0777, true);
@@ -172,62 +376,128 @@ final class FileMovingTest extends CIUnitTestCase
 
         $this->assertInstanceOf(UploadedFile::class, $file);
         $this->assertFalse($file->hasMoved());
+
         $file->move($destination, $file->getName(), false);
+
         $this->assertTrue($file->hasMoved());
     }
 
-    public function testStore()
+    public function testStore(): void
     {
         $finalFilename = 'fileA';
-
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile1' => [
                 'name'     => $finalFilename . '.txt',
                 'type'     => 'text/plain',
                 'size'     => 124,
-                'tmp_name' => '/tmp/fileA.txt',
+                'tmp_name' => sys_get_temp_dir() . '/fileA.txt',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
         $this->assertTrue($collection->hasFile('userfile1'));
-
-        $destination = $this->destination;
-
-        // Create the destination if not exists
-        if (! is_dir($destination)) {
-            mkdir($destination, 0777, true);
-        }
 
         $file = $collection->getFile('userfile1');
 
         $this->assertInstanceOf(UploadedFile::class, $file);
-        $path = $file->store($destination, $file->getName());
-        $this->assertSame($destination . '/fileA.txt', $path);
+
+        $folderName = 'file-moving-test-' . bin2hex(random_bytes(4));
+        $directory  = WRITEPATH . 'uploads/' . $folderName;
+
+        try {
+            $path = $file->store($folderName, 'stored-file.txt');
+
+            $this->assertSame($folderName . '/stored-file.txt', $path);
+            $this->assertFileExists($directory . '/stored-file.txt');
+        } finally {
+            if (is_file($directory . '/stored-file.txt')) {
+                unlink($directory . '/stored-file.txt');
+            }
+            if (is_file($directory . '/index.html')) {
+                unlink($directory . '/index.html');
+            }
+            if (is_dir($directory)) {
+                rmdir($directory);
+            }
+        }
     }
 
-    public function testAlreadyMoved()
+    #[DataProvider('provideStoreRejectsUnsafeExplicitNameOnWindows')]
+    public function testStoreRejectsUnsafeExplicitNameOnWindows(string $clientName): void
+    {
+        is_windows(true);
+
+        service('superglobals')->setFilesArray([
+            'userfile' => [
+                'name'     => $clientName,
+                'type'     => 'text/plain',
+                'size'     => 124,
+                'tmp_name' => sys_get_temp_dir() . '/fileA.txt',
+                'error'    => 0,
+            ],
+        ]);
+
+        $file = (new FileCollection())->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
+
+        $folderName = 'file-moving-test-' . bin2hex(random_bytes(4));
+        $directory  = WRITEPATH . 'uploads/' . $folderName;
+
+        try {
+            try {
+                $file->store($folderName, $file->getName());
+                $this->fail('HTTPException was not thrown.');
+            } catch (HTTPException $e) {
+                $this->assertSame(lang('HTTP.invalidFileName'), $e->getMessage());
+            }
+
+            $this->assertFalse($file->hasMoved());
+            $this->assertSame($clientName, $file->getName());
+            $this->assertFileDoesNotExist($directory . '/shell.php');
+        } finally {
+            foreach (['shell.php..', 'shell.php  ', 'shell.php:stream', 'shell.php', 'index.html'] as $name) {
+                if (is_file($directory . '/' . $name)) {
+                    unlink($directory . '/' . $name);
+                }
+            }
+            if (is_dir($directory)) {
+                rmdir($directory);
+            }
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function provideStoreRejectsUnsafeExplicitNameOnWindows(): iterable
+    {
+        yield 'trailing periods' => ['shell.php..'];
+
+        yield 'two trailing spaces' => ['shell.php  '];
+
+        yield 'NTFS stream' => ['shell.php:stream'];
+    }
+
+    public function testAlreadyMoved(): void
     {
         $finalFilename = 'fileA';
-
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile1' => [
                 'name'     => $finalFilename . '.txt',
                 'type'     => 'text/plain',
                 'size'     => 124,
-                'tmp_name' => '/tmp/fileA.txt',
+                'tmp_name' => sys_get_temp_dir() . '/fileA.txt',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
         $this->assertTrue($collection->hasFile('userfile1'));
 
         $destination = $this->destination;
-
         // Create the destination if not exists
         if (! is_dir($destination)) {
             mkdir($destination, 0777, true);
@@ -241,50 +511,84 @@ final class FileMovingTest extends CIUnitTestCase
         }
     }
 
-    public function testInvalidFile()
+    public function testInvalidFile(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name'     => 'someFile.txt',
                 'type'     => 'text/plain',
-                'size'     => '124',
-                'tmp_name' => '/tmp/myTempFile.txt',
+                'size'     => 124,
+                'tmp_name' => sys_get_temp_dir() . '/myTempFile.txt',
                 'error'    => UPLOAD_ERR_INI_SIZE,
             ],
-        ];
+        ]);
 
         $destination = $this->destination;
-
-        $collection = new FileCollection();
-        $file       = $collection->getFile('userfile');
+        $collection  = new FileCollection();
 
         $this->expectException(HTTPException::class);
+
+        $file = $collection->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
         $file->move($destination, $file->getName(), false);
     }
 
-    public function testFailedMove()
+    public function testFailedMoveBecauseOfWarning(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name'     => 'someFile.txt',
                 'type'     => 'text/plain',
-                'size'     => '124',
-                'tmp_name' => '/tmp/myTempFile.txt',
+                'size'     => 124,
+                'tmp_name' => sys_get_temp_dir() . '/myTempFile.txt',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $destination = $this->destination;
-
         // Create the destination and make it read only
         if (! is_dir($destination)) {
             mkdir($destination, 0400, true);
         }
 
         $collection = new FileCollection();
-        $file       = $collection->getFile('userfile');
 
         $this->expectException(HTTPException::class);
+
+        $file = $collection->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
+        $file->move($destination, $file->getName(), false);
+    }
+
+    public function testFailedMoveBecauseOfFalseReturned(): void
+    {
+        service('superglobals')->setFilesArray([
+            'userfile1' => [
+                'name'     => 'fileA.txt',
+                'type'     => 'text/plain',
+                'size'     => 124,
+                'tmp_name' => sys_get_temp_dir() . '/fileA.txt',
+                'error'    => 0,
+            ],
+        ]);
+
+        $collection = new FileCollection();
+
+        $this->assertTrue($collection->hasFile('userfile1'));
+
+        $destination = $this->destination;
+        // Create the destination if not exists
+        if (! is_dir($destination)) {
+            mkdir($destination, 0777, true);
+        }
+        // Set the mock's return value to false
+        move_uploaded_file('', '', false);
+
+        $this->expectException(HTTPException::class);
+        $this->expectExceptionMessage('move_uploaded_file() returned false');
+
+        $file = $collection->getFile('userfile1');
+        $this->assertInstanceOf(UploadedFile::class, $file);
         $file->move($destination, $file->getName(), false);
     }
 }
@@ -295,14 +599,13 @@ final class FileMovingTest extends CIUnitTestCase
  *
  * This overwrite is for testing the move operation.
  */
-
-function is_uploaded_file($filename)
+function is_uploaded_file(string $filename): bool
 {
-    if (! file_exists($filename)) {
+    if (! is_file($filename)) {
         file_put_contents($filename, 'data');
     }
 
-    return file_exists($filename);
+    return is_file($filename);
 }
 
 /*
@@ -310,14 +613,23 @@ function is_uploaded_file($filename)
  *
  * This overwrite is for testing the move operation.
  */
-
-function move_uploaded_file($filename, $destination)
+function move_uploaded_file(string $filename, string $destination, ?bool $setReturnValue = null): bool
 {
+    static $return = true;
+
+    if ($setReturnValue !== null) {
+        $return = $setReturnValue;
+
+        return true;
+    }
+
     copy($filename, $destination);
     unlink($filename);
+
+    return $return;
 }
 
-function rrmdir($src)
+function rrmdir(string $src): void
 {
     $dir = opendir($src);
 

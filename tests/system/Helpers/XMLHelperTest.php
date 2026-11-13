@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,10 +14,12 @@
 namespace CodeIgniter\Helpers;
 
 use CodeIgniter\Test\CIUnitTestCase;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class XMLHelperTest extends CIUnitTestCase
 {
     protected function setUp(): void
@@ -25,14 +29,14 @@ final class XMLHelperTest extends CIUnitTestCase
         helper('xml');
     }
 
-    public function testConvert()
+    public function testConvert(): void
     {
         $original = '<p>Here is a so-so paragraph & an entity (&#123;).</p>';
         $expected = '&lt;p&gt;Here is a so&#45;so paragraph &amp; an entity (&#123;).&lt;/p&gt;';
         $this->assertSame($expected, xml_convert($original));
     }
 
-    public function testConvertProtected()
+    public function testConvertProtected(): void
     {
         $original = '<p>Here is a so&so; paragraph & an entity (&#123;).</p>';
         $expected = '&lt;p&gt;Here is a so&so; paragraph &amp; an entity (&#123;).&lt;/p&gt;';

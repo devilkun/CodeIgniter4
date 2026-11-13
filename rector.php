@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -9,128 +11,172 @@
  * the LICENSE file that was distributed with this source code.
  */
 
-use Rector\CodeQuality\Rector\BooleanAnd\SimplifyEmptyArrayCheckRector;
-use Rector\CodeQuality\Rector\Expression\InlineIfToExplicitIfRector;
-use Rector\CodeQuality\Rector\For_\ForToForeachRector;
-use Rector\CodeQuality\Rector\Foreach_\UnusedForeachValueToArrayKeysRector;
-use Rector\CodeQuality\Rector\FuncCall\AddPregQuoteDelimiterRector;
-use Rector\CodeQuality\Rector\FuncCall\ChangeArrayPushToArrayAssignRector;
-use Rector\CodeQuality\Rector\FuncCall\SimplifyRegexPatternRector;
-use Rector\CodeQuality\Rector\FuncCall\SimplifyStrposLowerRector;
-use Rector\CodeQuality\Rector\If_\CombineIfRector;
-use Rector\CodeQuality\Rector\If_\ShortenElseIfRector;
-use Rector\CodeQuality\Rector\If_\SimplifyIfElseToTernaryRector;
-use Rector\CodeQuality\Rector\If_\SimplifyIfReturnBoolRector;
-use Rector\CodeQuality\Rector\Name\FixClassCaseSensitivityNameRector;
-use Rector\CodeQuality\Rector\Return_\SimplifyUselessVariableRector;
-use Rector\CodeQuality\Rector\Ternary\UnnecessaryTernaryExpressionRector;
+use Rector\Caching\ValueObject\Storage\FileCacheStorage;
+use Rector\CodeQuality\Rector\BooleanNot\NegatedAndsToPositiveOrsRector;
+use Rector\CodeQuality\Rector\ClassMethod\LocallyCalledStaticMethodToNonStaticRector;
+use Rector\CodeQuality\Rector\FuncCall\CompactToVariablesRector;
+use Rector\CodeQuality\Rector\Isset_\IssetOnPropertyObjectToPropertyExistsRector;
 use Rector\CodingStyle\Rector\ClassMethod\FuncGetArgsToVariadicParamRector;
 use Rector\CodingStyle\Rector\ClassMethod\MakeInheritedMethodVisibilitySameAsParentRector;
-use Rector\CodingStyle\Rector\FuncCall\CountArrayToEmptyArrayComparisonRector;
-use Rector\Core\Configuration\Option;
-use Rector\Core\ValueObject\PhpVersion;
+use Rector\CodingStyle\Rector\FuncCall\VersionCompareFuncCallToConstantRector;
+use Rector\Config\RectorConfig;
+use Rector\DeadCode\Rector\ClassMethod\RemoveUnusedConstructorParamRector;
 use Rector\DeadCode\Rector\ClassMethod\RemoveUnusedPrivateMethodRector;
-use Rector\DeadCode\Rector\ClassMethod\RemoveUnusedPromotedPropertyRector;
-use Rector\DeadCode\Rector\If_\UnwrapFutureCompatibleIfPhpVersionRector;
-use Rector\DeadCode\Rector\MethodCall\RemoveEmptyMethodCallRector;
-use Rector\EarlyReturn\Rector\Foreach_\ChangeNestedForeachIfsToEarlyContinueRector;
-use Rector\EarlyReturn\Rector\If_\ChangeIfElseValueAssignToEarlyReturnRector;
-use Rector\EarlyReturn\Rector\If_\RemoveAlwaysElseRector;
-use Rector\EarlyReturn\Rector\Return_\PreparedValueToEarlyReturnRector;
-use Rector\Php70\Rector\Ternary\TernaryToNullCoalescingRector;
+use Rector\DeadCode\Rector\MethodCall\RemoveNullArgOnNullDefaultParamRector;
+use Rector\DeadCode\Rector\Property\RemoveDefaultValueFromAssignedPropertyRector;
+use Rector\Php70\Rector\FuncCall\RandomFunctionRector;
 use Rector\Php71\Rector\FuncCall\RemoveExtraParametersRector;
-use Rector\Php71\Rector\List_\ListToArrayDestructRector;
-use Rector\Php73\Rector\FuncCall\JsonThrowOnErrorRector;
-use Rector\Php73\Rector\FuncCall\StringifyStrNeedlesRector;
-use Rector\Set\ValueObject\SetList;
-use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
+use Rector\Php80\Rector\Class_\ClassPropertyAssignToConstructorPromotionRector;
+use Rector\PHPUnit\CodeQuality\Rector\Class_\YieldDataProviderRector;
+use Rector\PHPUnit\CodeQuality\Rector\StmtsAwareInterface\DeclareStrictTypesTestsRector;
+use Rector\Privatization\Rector\Class_\FinalizeTestCaseClassRector;
+use Rector\Privatization\Rector\Property\PrivatizeFinalClassPropertyRector;
+use Rector\Renaming\Rector\ConstFetch\RenameConstantRector;
+use Rector\TypeDeclaration\Rector\ArrowFunction\AddArrowFunctionReturnTypeRector;
+use Rector\TypeDeclaration\Rector\ClassMethod\AddMethodCallBasedStrictParamTypeRector;
+use Rector\TypeDeclaration\Rector\ClassMethod\ReturnNeverTypeRector;
+use Rector\TypeDeclaration\Rector\Closure\AddClosureVoidReturnTypeWhereNoReturnRector;
+use Rector\TypeDeclaration\Rector\Closure\ClosureReturnTypeRector;
+use Rector\TypeDeclaration\Rector\Function_\AddFunctionVoidReturnTypeWhereNoReturnRector;
+use Rector\TypeDeclaration\Rector\Property\TypedPropertyFromAssignsRector;
+use Rector\TypeDeclaration\Rector\StmtsAwareInterface\SafeDeclareStrictTypesRector;
 use Utils\Rector\PassStrictParameterToFunctionParameterRector;
 use Utils\Rector\RemoveErrorSuppressInTryCatchStmtsRector;
-use Utils\Rector\RemoveVarTagFromClassConstantRector;
 use Utils\Rector\UnderscoreToCamelCaseVariableNameRector;
 
-return static function (ContainerConfigurator $containerConfigurator): void {
-    $containerConfigurator->import(SetList::DEAD_CODE);
-    $containerConfigurator->import(SetList::PHP_73);
-
-    $parameters = $containerConfigurator->parameters();
-
+return RectorConfig::configure()
+    ->withPhpSets(php82: true)
+    ->withPreparedSets(deadCode: true, codeQuality: true, instanceOf: true, phpunitCodeQuality: true)
+    ->withComposerBased(phpunit: true)
+    ->withParallel(120, 8, 10)
+    ->withCache(
+        // Github action cache or local
+        is_dir('/tmp') ? '/tmp/rector' : null,
+        FileCacheStorage::class,
+    )
     // paths to refactor; solid alternative to CLI arguments
-    $parameters->set(Option::PATHS, [__DIR__ . '/app', __DIR__ . '/system', __DIR__ . '/tests', __DIR__ . '/utils/Rector']);
-
+    ->withPaths([
+        __DIR__ . '/app',
+        __DIR__ . '/system',
+        __DIR__ . '/tests',
+        __DIR__ . '/utils/src',
+    ])
+    ->withRootFiles()
     // do you need to include constants, class aliases or custom autoloader? files listed will be executed
-    $parameters->set(Option::BOOTSTRAP_FILES, [
-        __DIR__ . '/system/Test/bootstrap.php',
-    ]);
-
+    ->withBootstrapFiles([
+        __DIR__ . '/phpstan-bootstrap.php',
+    ])
+    ->withPHPStanConfigs([
+        __DIR__ . '/vendor/codeigniter/phpstan-codeigniter/extension.neon',
+        __DIR__ . '/vendor/phpstan/phpstan-strict-rules/rules.neon',
+        __DIR__ . '/vendor/shipmonk/phpstan-baseline-per-identifier/extension.neon',
+        __DIR__ . '/phpstan.dist.neon',
+    ])
     // is there a file you need to skip?
-    $parameters->set(Option::SKIP, [
-        __DIR__ . '/app/Views',
+    ->withSkip([
+        __DIR__ . '/structarmed-baseline.php',
         __DIR__ . '/system/Debug/Toolbar/Views/toolbar.tpl.php',
         __DIR__ . '/system/ThirdParty',
         __DIR__ . '/tests/system/Config/fixtures',
-        __DIR__ . '/tests/_support',
-        JsonThrowOnErrorRector::class,
-        StringifyStrNeedlesRector::class,
+        __DIR__ . '/tests/system/Filters/fixtures',
+        __DIR__ . '/tests/_support/Commands/Foobar.php',
+        __DIR__ . '/tests/_support/View',
+        __DIR__ . '/tests/system/View/Views',
 
-        // requires php 8
-        RemoveUnusedPromotedPropertyRector::class,
+        YieldDataProviderRector::class,
 
-        // private method called via getPrivateMethodInvoker
         RemoveUnusedPrivateMethodRector::class => [
-            __DIR__ . '/tests/system/Test/ReflectionHelperTest.php',
+            // private method called via getPrivateMethodInvoker
+            __DIR__ . '/tests/_support/Test/TestForReflectionHelper.php',
         ],
 
-        // call on purpose for nothing happen check
-        RemoveEmptyMethodCallRector::class => [
-            __DIR__ . '/tests',
+        RemoveUnusedConstructorParamRector::class => [
+            __DIR__ . '/system/HTTP/Response.php',
         ],
 
-        // check on constant compare
-        UnwrapFutureCompatibleIfPhpVersionRector::class => [
-            __DIR__ . '/system/CodeIgniter.php',
+        // Keep property defaults for backward compatibility.
+        RemoveDefaultValueFromAssignedPropertyRector::class,
+
+        // Exclude test file because `is_cli()` is mocked and Rector might remove needed parameters.
+        RemoveExtraParametersRector::class => [
+            __DIR__ . '/tests/system/CLI/CLITest.php',
+            __DIR__ . '/tests/system/Debug/ToolbarTest.php',
         ],
 
-        // session handlers have the gc() method with underscored parameter `$max_lifetime`
         UnderscoreToCamelCaseVariableNameRector::class => [
+            // session handlers have the gc() method with underscored parameter `$max_lifetime`
             __DIR__ . '/system/Session/Handlers',
+            __DIR__ . '/tests/_support/Entity/CustomUser.php',
         ],
-    ]);
 
+        // use mt_rand instead of random_int on purpose on non-cryptographically random
+        RandomFunctionRector::class,
+
+        // PHP 8.0 features but cause breaking changes
+        ClassPropertyAssignToConstructorPromotionRector::class => [
+            __DIR__ . '/system/Database/BaseResult.php',
+            __DIR__ . '/system/Database/RawSql.php',
+            __DIR__ . '/system/Debug/BaseExceptionHandler.php',
+            __DIR__ . '/system/Filters/Filters.php',
+            __DIR__ . '/system/HTTP/CURLRequest.php',
+            __DIR__ . '/system/HTTP/DownloadResponse.php',
+            __DIR__ . '/system/Security/Security.php',
+            __DIR__ . '/system/Session/Session.php',
+        ],
+
+        ReturnNeverTypeRector::class => [
+            __DIR__ . '/system/CodeIgniter.php',
+            __DIR__ . '/system/Database/MySQLi/Utils.php',
+            __DIR__ . '/system/Database/OCI8/Utils.php',
+            __DIR__ . '/system/Database/Postgre/Utils.php',
+            __DIR__ . '/system/Database/SQLSRV/Utils.php',
+            __DIR__ . '/system/Database/SQLite3/Utils.php',
+            __DIR__ . '/system/HTTP/DownloadResponse.php',
+            __DIR__ . '/system/HTTP/SiteURI.php',
+        ],
+
+        CompactToVariablesRector::class,
+
+        // possibly isset() on purpose, on updated Config classes property across versions
+        IssetOnPropertyObjectToPropertyExistsRector::class,
+
+        // some tests extended by other tests
+        FinalizeTestCaseClassRector::class,
+
+        DeclareStrictTypesTestsRector::class => [
+            __DIR__ . '/tests/system/Debug/ExceptionsTest.php',
+        ],
+
+        RemoveNullArgOnNullDefaultParamRector::class => [
+            // skip form query usage, easier to read
+            __DIR__ . '/system/Model.php',
+            __DIR__ . '/tests/system/Database',
+            __DIR__ . '/tests/system/Models',
+        ],
+
+        // to be applied in separate PRs to ease review
+        NegatedAndsToPositiveOrsRector::class,
+        SafeDeclareStrictTypesRector::class,
+        LocallyCalledStaticMethodToNonStaticRector::class,
+    ])
     // auto import fully qualified class names
-    $parameters->set(Option::AUTO_IMPORT_NAMES, true);
-    $parameters->set(Option::PHP_VERSION_FEATURES, PhpVersion::PHP_73);
-
-    $services = $containerConfigurator->services();
-    $services->load('Symplify\\PackageBuilder\\', __DIR__ . '/vendor/symplify/package-builder/src');
-
-    $services->set(UnderscoreToCamelCaseVariableNameRector::class);
-    $services->set(SimplifyUselessVariableRector::class);
-    $services->set(RemoveAlwaysElseRector::class);
-    $services->set(PassStrictParameterToFunctionParameterRector::class);
-    $services->set(CountArrayToEmptyArrayComparisonRector::class);
-    $services->set(ForToForeachRector::class);
-    $services->set(ChangeNestedForeachIfsToEarlyContinueRector::class);
-    $services->set(ChangeIfElseValueAssignToEarlyReturnRector::class);
-    $services->set(SimplifyStrposLowerRector::class);
-    $services->set(CombineIfRector::class);
-    $services->set(SimplifyIfReturnBoolRector::class);
-    $services->set(InlineIfToExplicitIfRector::class);
-    $services->set(PreparedValueToEarlyReturnRector::class);
-    $services->set(ShortenElseIfRector::class);
-    $services->set(SimplifyIfElseToTernaryRector::class);
-    $services->set(UnusedForeachValueToArrayKeysRector::class);
-    $services->set(ChangeArrayPushToArrayAssignRector::class);
-    $services->set(UnnecessaryTernaryExpressionRector::class);
-    $services->set(RemoveErrorSuppressInTryCatchStmtsRector::class);
-    $services->set(TernaryToNullCoalescingRector::class);
-    $services->set(ListToArrayDestructRector::class);
-    $services->set(RemoveVarTagFromClassConstantRector::class);
-    $services->set(AddPregQuoteDelimiterRector::class);
-    $services->set(SimplifyRegexPatternRector::class);
-    $services->set(RemoveExtraParametersRector::class);
-    $services->set(FuncGetArgsToVariadicParamRector::class);
-    $services->set(MakeInheritedMethodVisibilitySameAsParentRector::class);
-    $services->set(FixClassCaseSensitivityNameRector::class);
-    $services->set(SimplifyEmptyArrayCheckRector::class);
-};
+    ->withImportNames()
+    ->withRules([
+        UnderscoreToCamelCaseVariableNameRector::class,
+        PassStrictParameterToFunctionParameterRector::class,
+        RemoveErrorSuppressInTryCatchStmtsRector::class,
+        FuncGetArgsToVariadicParamRector::class,
+        MakeInheritedMethodVisibilitySameAsParentRector::class,
+        PrivatizeFinalClassPropertyRector::class,
+        VersionCompareFuncCallToConstantRector::class,
+        AddClosureVoidReturnTypeWhereNoReturnRector::class,
+        AddFunctionVoidReturnTypeWhereNoReturnRector::class,
+        AddMethodCallBasedStrictParamTypeRector::class,
+        TypedPropertyFromAssignsRector::class,
+        ClosureReturnTypeRector::class,
+        AddArrowFunctionReturnTypeRector::class,
+    ])
+    ->withConfiguredRule(RenameConstantRector::class, [
+        'FILTER_DEFAULT' => 'FILTER_UNSAFE_RAW',
+    ])
+    ->reportUnusedSkips();

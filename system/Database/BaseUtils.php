@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,14 +16,12 @@ namespace CodeIgniter\Database;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 
 /**
- * Class BaseUtils
+ * @template TDb of BaseConnection
  */
 abstract class BaseUtils
 {
     /**
-     * Database object
-     *
-     * @var object
+     * @var TDb
      */
     protected $db;
 
@@ -47,19 +47,19 @@ abstract class BaseUtils
     protected $repairTable = false;
 
     /**
-     * Class constructor
+     * @param TDb $db
      */
-    public function __construct(ConnectionInterface &$db)
+    public function __construct(ConnectionInterface $db)
     {
-        $this->db = &$db;
+        $this->db = $db;
     }
 
     /**
      * List databases
      *
-     * @throws DatabaseException
+     * @return bool|list<mixed>
      *
-     * @return array|bool
+     * @throws DatabaseException
      */
     public function listDatabases()
     {
@@ -101,9 +101,9 @@ abstract class BaseUtils
     /**
      * Optimize Table
      *
-     * @throws DatabaseException
-     *
      * @return bool
+     *
+     * @throws DatabaseException
      */
     public function optimizeTable(string $tableName)
     {
@@ -123,9 +123,9 @@ abstract class BaseUtils
     /**
      * Optimize Database
      *
-     * @throws DatabaseException
+     * @return array<string, mixed>|bool
      *
-     * @return mixed
+     * @throws DatabaseException
      */
     public function optimizeDatabase()
     {
@@ -150,7 +150,7 @@ abstract class BaseUtils
             $res = $res->getResultArray();
 
             // Postgre & SQLite3 returns empty array
-            if (empty($res)) {
+            if ($res === []) {
                 $key = $tableName;
             } else {
                 $res  = current($res);
@@ -168,9 +168,9 @@ abstract class BaseUtils
     /**
      * Repair Table
      *
-     * @throws DatabaseException
+     * @return array<string, mixed>|bool
      *
-     * @return mixed
+     * @throws DatabaseException
      */
     public function repairTable(string $tableName)
     {
@@ -200,7 +200,7 @@ abstract class BaseUtils
     public function getCSVFromResult(ResultInterface $query, string $delim = ',', string $newline = "\n", string $enclosure = '"')
     {
         $out = '';
-        // First generate the headings from the table column names
+
         foreach ($query->getFieldNames() as $name) {
             $out .= $enclosure . str_replace($enclosure, $enclosure . $enclosure, $name) . $enclosure . $delim;
         }
@@ -212,7 +212,11 @@ abstract class BaseUtils
             $line = [];
 
             foreach ($row as $item) {
-                $line[] = $enclosure . str_replace($enclosure, $enclosure . $enclosure, $item) . $enclosure;
+                $line[] = $enclosure . str_replace(
+                    $enclosure,
+                    $enclosure . $enclosure,
+                    (string) $item,
+                ) . $enclosure;
             }
 
             $out .= implode($delim, $line) . $newline;
@@ -223,13 +227,13 @@ abstract class BaseUtils
 
     /**
      * Generate XML data from a query result object
+     *
+     * @param array<string, string> $params
      */
     public function getXMLFromResult(ResultInterface $query, array $params = []): string
     {
         foreach (['root' => 'root', 'element' => 'element', 'newline' => "\n", 'tab' => "\t"] as $key => $val) {
-            if (! isset($params[$key])) {
-                $params[$key] = $val;
-            }
+            $params[$key] ??= $val;
         }
 
         $root    = $params['root'];
@@ -244,7 +248,7 @@ abstract class BaseUtils
             $xml .= $tab . '<' . $element . '>' . $newline;
 
             foreach ($row as $key => $val) {
-                $val = (! empty($val)) ? xml_convert($val) : '';
+                $val = ($val === null || $val === '') ? '' : xml_convert((string) $val);
 
                 $xml .= $tab . $tab . '<' . $key . '>' . $val . '</' . $key . '>' . $newline;
             }
@@ -258,11 +262,11 @@ abstract class BaseUtils
     /**
      * Database Backup
      *
-     * @param array|string $params
+     * @param array<string, mixed>|string $params
+     *
+     * @return false|string
      *
      * @throws DatabaseException
-     *
-     * @return mixed
      */
     public function backup($params = [])
     {
@@ -281,7 +285,7 @@ abstract class BaseUtils
             'foreign_key_checks' => true,
         ];
 
-        if (! empty($params)) {
+        if ($params !== []) {
             foreach (array_keys($prefs) as $key) {
                 if (isset($params[$key])) {
                     $prefs[$key] = $params[$key];
@@ -289,7 +293,7 @@ abstract class BaseUtils
             }
         }
 
-        if (empty($prefs['tables'])) {
+        if ($prefs['tables'] === [] || $prefs['tables'] === '') {
             $prefs['tables'] = $this->db->listTables();
         }
 
@@ -309,13 +313,14 @@ abstract class BaseUtils
             return $this->_backup($prefs);
         }
 
+        // @TODO gzencode() requires `ext-zlib`, but _backup() is not implemented in all databases.
         return gzencode($this->_backup($prefs));
     }
 
     /**
-     * Platform dependent version of the backup function.
+     * @param array<string, mixed>|null $prefs
      *
-     * @return mixed
+     * @return false|string
      */
     abstract public function _backup(?array $prefs = null);
 }

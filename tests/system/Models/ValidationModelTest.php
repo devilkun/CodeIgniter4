@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,15 +14,19 @@
 namespace CodeIgniter\Models;
 
 use CodeIgniter\Config\Factories;
+use CodeIgniter\Model;
 use Config\Validation;
+use PHPUnit\Framework\Attributes\Group;
 use stdClass;
 use Tests\Support\Models\JobModel;
+use Tests\Support\Models\SimpleEntity;
 use Tests\Support\Models\ValidErrorsModel;
 use Tests\Support\Models\ValidModel;
 
 /**
  * @internal
  */
+#[Group('DatabaseLive')]
 final class ValidationModelTest extends LiveModelTestCase
 {
     protected function setUp(): void
@@ -53,6 +59,29 @@ final class ValidationModelTest extends LiveModelTestCase
 
         $errors = $this->model->errors();
         $this->assertSame('You forgot to name the baby.', $errors['name']);
+    }
+
+    /**
+     * @see https://github.com/codeigniter4/CodeIgniter4/issues/5859
+     */
+    public function testValidationTwice(): void
+    {
+        $data = [
+            'name'        => null,
+            'description' => 'some great marketing stuff',
+        ];
+
+        $this->assertFalse($this->model->insert($data));
+
+        $errors = $this->model->errors();
+        $this->assertSame('You forgot to name the baby.', $errors['name']);
+
+        $data = [
+            'name'        => 'some name',
+            'description' => 'some great marketing stuff',
+        ];
+
+        $this->assertIsInt($this->model->insert($data));
     }
 
     public function testValidationWithSetValidationRule(): void
@@ -153,20 +182,20 @@ final class ValidationModelTest extends LiveModelTestCase
 
     public function testCleanValidationRemovesAllWhenNoDataProvided(): void
     {
-        $cleaner = $this->getPrivateMethodInvoker($this->model, 'cleanValidationRules');
+        $cleaner = self::getPrivateMethodInvoker($this->model, 'cleanValidationRules');
 
         $rules = [
             'name' => 'required',
             'foo'  => 'bar',
         ];
 
-        $rules = $cleaner($rules, null);
+        $rules = $cleaner($rules, []);
         $this->assertEmpty($rules);
     }
 
     public function testCleanValidationRemovesOnlyForFieldsNotProvided(): void
     {
-        $cleaner = $this->getPrivateMethodInvoker($this->model, 'cleanValidationRules');
+        $cleaner = self::getPrivateMethodInvoker($this->model, 'cleanValidationRules');
 
         $rules = [
             'name' => 'required',
@@ -184,7 +213,7 @@ final class ValidationModelTest extends LiveModelTestCase
 
     public function testCleanValidationReturnsAllWhenAllExist(): void
     {
-        $cleaner = $this->getPrivateMethodInvoker($this->model, 'cleanValidationRules');
+        $cleaner = self::getPrivateMethodInvoker($this->model, 'cleanValidationRules');
 
         $rules = [
             'name' => 'required',
@@ -213,26 +242,29 @@ final class ValidationModelTest extends LiveModelTestCase
 
     public function testValidationWithGroupName(): void
     {
-        $config = new Validation();
+        $config = new class () extends Validation {
+            /**
+             * @var array{'id': string, 'name': array{string, string}, 'token': string}
+             */
+            public $grouptest = [
+                'id'   => 'is_natural_no_zero',
+                'name' => [
+                    'required',
+                    'min_length[3]',
+                ],
+                'token' => 'in_list[{id}]',
+            ];
+        };
+        Factories::injectMock('config', 'Validation', $config);
 
-        $config->grouptest = [
-            'name' => [
-                'required',
-                'min_length[3]',
-            ],
-            'token' => 'in_list[{id}]',
-        ];
+        $this->createModel(ValidModel::class);
+        $this->setPrivateProperty($this->model, 'validationRules', 'grouptest');
 
         $data = [
             'name'  => 'abc',
             'id'    => 13,
             'token' => 13,
         ];
-
-        Factories::injectMock('config', 'Validation', $config);
-
-        $this->createModel(ValidModel::class);
-        $this->setPrivateProperty($this->model, 'validationRules', 'grouptest');
         $this->assertTrue($this->model->validate($data));
     }
 
@@ -284,7 +316,7 @@ final class ValidationModelTest extends LiveModelTestCase
             'description' => 'just because we have to',
         ];
 
-        $this->assertTrue($this->model->insert($data) !== false);
+        $this->assertNotFalse($this->model->insert($data));
     }
 
     /**
@@ -343,5 +375,119 @@ final class ValidationModelTest extends LiveModelTestCase
 
         $error = $this->model->getValidationMessages();
         $this->assertSame('Description field is required.', $error['description']);
+    }
+
+    /**
+     * @see https://github.com/codeigniter4/CodeIgniter4/issues/6577
+     */
+    public function testUpdateEntityWithPropertyCleanValidationRulesTrueAndCallingCleanRulesFalse(): void
+    {
+        $model = new class () extends Model {
+            protected $table           = 'test';
+            protected $allowedFields   = ['field1', 'field2', 'field3', 'field4'];
+            protected $returnType      = SimpleEntity::class;
+            protected $validationRules = [
+                'field1' => 'required_with[field2,field3,field4]',
+                'field2' => 'permit_empty',
+                'field3' => 'permit_empty',
+                'field4' => 'permit_empty',
+            ];
+        };
+
+        // Simulate to get the entity from the database.
+        $entity = new SimpleEntity();
+        $entity->injectRawData([
+            'id'     => '1',
+            'field1' => 'value1',
+            'field2' => 'value2',
+            'field3' => '',
+            'field4' => '',
+        ]);
+
+        // Change field1 value.
+        $entity->field1 = '';
+
+        // Set $cleanValidationRules to false by cleanRules()
+        $model->cleanRules(false)->save($entity);
+
+        $errors = $model->errors();
+        $this->assertCount(1, $errors);
+        $this->assertSame(
+            'The field1 field is required when field2,field3,field4 is present.',
+            $errors['field1'],
+        );
+    }
+
+    public function testUpdateEntityWithPropertyCleanValidationRulesFalse(): void
+    {
+        $model = new class () extends Model {
+            protected $table           = 'test';
+            protected $allowedFields   = ['field1', 'field2', 'field3', 'field4'];
+            protected $returnType      = SimpleEntity::class;
+            protected $validationRules = [
+                'field1' => 'required_with[field2,field3,field4]',
+                'field2' => 'permit_empty',
+                'field3' => 'permit_empty',
+                'field4' => 'permit_empty',
+            ];
+
+            // Set to false.
+            protected $cleanValidationRules = false;
+        };
+
+        // Simulate to get the entity from the database.
+        $entity = new SimpleEntity();
+        $entity->injectRawData([
+            'id'     => '1',
+            'field1' => 'value1',
+            'field2' => 'value2',
+            'field3' => '',
+            'field4' => '',
+        ]);
+
+        // Change field1 value.
+        $entity->field1 = '';
+
+        $model->save($entity);
+
+        $errors = $model->errors();
+        $this->assertCount(1, $errors);
+        $this->assertSame(
+            'The field1 field is required when field2,field3,field4 is present.',
+            $errors['field1'],
+        );
+    }
+
+    public function testInsertEntityValidateEntireRules(): void
+    {
+        $model = new class () extends Model {
+            protected $table           = 'test';
+            protected $allowedFields   = ['field1', 'field2', 'field3', 'field4'];
+            protected $returnType      = SimpleEntity::class;
+            protected $validationRules = [
+                'field1' => 'required',
+                'field2' => 'required',
+                'field3' => 'permit_empty',
+                'field4' => 'permit_empty',
+            ];
+        };
+
+        $entity = new SimpleEntity();
+        $entity->injectRawData([
+            'field1' => 'value1',
+            // field2 is missing
+            'field3' => '',
+            'field4' => '',
+        ]);
+
+        // Insert ignores $cleanValidationRules value.
+        $model->insert($entity);
+
+        $errors = $model->errors();
+        $this->assertCount(1, $errors);
+        $this->assertSame(
+            'The field2 field is required.',
+            $errors['field2'],
+        );
     }
 }

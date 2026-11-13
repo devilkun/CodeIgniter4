@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,7 +13,6 @@
 
 namespace CodeIgniter\View;
 
-use Config\Services;
 use NumberFormatter;
 
 /**
@@ -30,12 +31,16 @@ class Filters
     /**
      * Formats a date into the given $format.
      *
-     * @param mixed $value
+     * @param int|string|null $value
      */
     public static function date($value, string $format): string
     {
         if (is_string($value) && ! is_numeric($value)) {
             $value = strtotime($value);
+        }
+
+        if ($value !== null) {
+            $value = (int) $value;
         }
 
         return date($format, $value);
@@ -48,7 +53,7 @@ class Filters
      * Example:
      *      my_date|date_modify(+1 day)
      *
-     * @param string $value
+     * @param int|string|null $value
      *
      * @return false|int
      */
@@ -62,19 +67,18 @@ class Filters
     /**
      * Returns the given default value if $value is empty or undefined.
      *
-     * @param mixed $value
+     * @param bool|float|int|list<string>|object|resource|string|null $value
      */
     public static function default($value, string $default): string
     {
-        return empty($value)
-            ? $default
-            : $value;
+        return in_array($value, [null, false, 0, 0.0, '', '0', []], true) ? $default : $value;
     }
 
     /**
      * Escapes the given value with our `esc()` helper function.
      *
-     * @param string $value
+     * @param string                               $value
+     * @param 'attr'|'css'|'html'|'js'|'raw'|'url' $context
      */
     public static function esc($value, string $context = 'html'): string
     {
@@ -157,7 +161,7 @@ class Filters
             'duration'   => NumberFormatter::DURATION,
         ];
 
-        return format_number($value, $precision, $locale, ['type' => $types[$type]]);
+        return format_number((float) $value, $precision, $locale, ['type' => $types[$type]]);
     }
 
     /**
@@ -170,22 +174,24 @@ class Filters
     {
         helper('number');
 
+        $fraction ??= 0;
+
         $options = [
             'type'     => NumberFormatter::CURRENCY,
             'currency' => $currency,
             'fraction' => $fraction,
         ];
 
-        return format_number($value, 2, $locale, $options);
+        return format_number((float) $value, 2, $locale, $options);
     }
 
     /**
      * Returns a string with all instances of newline character (\n)
-     * converted to an HTML <br/> tag.
+     * converted to an HTML <br> tag.
      */
     public static function nl2br(string $value): string
     {
-        $typography = Services::typography();
+        $typography = service('typography');
 
         return $typography->nl2brExceptPre($value);
     }
@@ -196,7 +202,7 @@ class Filters
      */
     public static function prose(string $value): string
     {
-        $typography = Services::typography();
+        $typography = service('typography');
 
         return $typography->autoTypography($value);
     }
@@ -208,30 +214,27 @@ class Filters
      *  - ceil      always rounds up
      *  - floor     always rounds down
      *
-     * @param mixed $precision
+     * @param int|string $precision precision or type
      *
      * @return float|string
      */
     public static function round(string $value, $precision = 2, string $type = 'common')
     {
+        // In case that $precision is a type like `{ value1|round(ceil) }`
         if (! is_numeric($precision)) {
             $type      = $precision;
             $precision = 2;
+        } else {
+            $precision = (int) $precision;
         }
 
-        switch ($type) {
-            case 'common':
-                return round((float) $value, $precision);
-
-            case 'ceil':
-                return ceil((float) $value);
-
-            case 'floor':
-                return floor((float) $value);
-        }
-
-        // Still here, just return the value.
-        return $value;
+        return match ($type) {
+            'common' => round((float) $value, $precision),
+            'ceil'   => ceil((float) $value),
+            'floor'  => floor((float) $value),
+            // Still here, just return the value.
+            default => $value,
+        };
     }
 
     /**

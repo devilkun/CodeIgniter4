@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,41 +14,78 @@
 namespace CodeIgniter\Filters;
 
 use CodeIgniter\Config\Services;
+use CodeIgniter\HTTP\CLIRequest;
+use CodeIgniter\HTTP\IncomingRequest;
+use CodeIgniter\HTTP\Response;
 use CodeIgniter\Test\CIUnitTestCase;
+use PHPUnit\Framework\Attributes\BackupGlobals;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
- * @backupGlobals enabled
- *
  * @internal
  */
+#[BackupGlobals(true)]
+#[Group('Others')]
 final class CSRFTest extends CIUnitTestCase
 {
-    protected $config;
-    protected $request;
-    protected $response;
+    private \Config\Filters $config;
+
+    /**
+     * @var CLIRequest|IncomingRequest|null
+     */
+    private $request;
+
+    private ?Response $response = null;
 
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->resetServices();
+
         $this->config = new \Config\Filters();
     }
 
-    public function testNormal()
+    public function testDoNotCheckCliRequest(): void
     {
         $this->config->globals = [
             'before' => ['csrf'],
             'after'  => [],
         ];
 
-        $this->request  = Services::request(null, false);
-        $this->response = Services::response();
+        $this->request = Services::clirequest(null, false);
+
+        $response = service('response');
+        $this->assertInstanceOf(Response::class, $response);
+        $this->response = $response;
 
         $filters = new Filters($this->config, $this->request, $this->response);
         $uri     = 'admin/foo/bar';
 
-        // we expect CSRF requests to be ignored in CLI
-        $expected = $this->request;
-        $request  = $filters->run($uri, 'before');
-        $this->assertSame($expected, $request);
+        $request = $filters->run($uri, 'before');
+
+        $this->assertSame($this->request, $request);
+    }
+
+    public function testPassGetRequest(): void
+    {
+        $this->config->globals = [
+            'before' => ['csrf'],
+            'after'  => [],
+        ];
+
+        $this->request = service('incomingrequest', null, false);
+
+        $response = service('response');
+        $this->assertInstanceOf(Response::class, $response);
+        $this->response = $response;
+
+        $filters = new Filters($this->config, $this->request, $this->response);
+        $uri     = 'admin/foo/bar';
+
+        $request = $filters->run($uri, 'before');
+
+        // GET request is not protected, so no SecurityException will be thrown.
+        $this->assertSame($this->request, $request);
     }
 }

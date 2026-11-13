@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,6 +15,17 @@ namespace CodeIgniter\Test\Mock;
 
 use CodeIgniter\Database\BaseBuilder;
 
+/**
+ * @extends BaseBuilder<MockConnection>
+ */
 class MockBuilder extends BaseBuilder
 {
+    /**
+     * @var array<string, string>
+     */
+    protected $supportedIgnoreStatements = [
+        'update' => 'IGNORE',
+        'insert' => 'IGNORE',
+        'delete' => 'IGNORE',
+    ];
 }

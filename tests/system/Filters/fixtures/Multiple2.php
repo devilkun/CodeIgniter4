@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -19,12 +21,13 @@ class Multiple2 implements FilterInterface
 {
     public function before(RequestInterface $request, $arguments = null)
     {
-        $request->url = 'http://exampleMultipleURL.com';
+        $request->setHeader('x-url', 'http://exampleMultipleURL.com');
 
         return $request;
     }
 
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)
     {
+        return null;
     }
 }

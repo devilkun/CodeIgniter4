@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -15,14 +17,10 @@ use CodeIgniter\Model;
 
 class WithoutAutoIncrementModel extends Model
 {
-    protected $table = 'without_auto_increment';
-
-    protected $primaryKey = 'key';
-
+    protected $table         = 'without_auto_increment';
+    protected $primaryKey    = 'key';
     protected $allowedFields = [
-        'key',
         'value',
     ];
-
     protected $useAutoIncrement = false;
 }

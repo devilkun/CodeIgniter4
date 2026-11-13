@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,6 +13,8 @@
 
 namespace CodeIgniter\HTTP;
 
+use CodeIgniter\Exceptions\InvalidArgumentException;
+
 /**
  * An HTTP message
  */
@@ -21,32 +25,33 @@ class Message implements MessageInterface
     /**
      * Protocol version
      *
-     * @var string
+     * @var string|null
      */
     protected $protocolVersion;
 
     /**
      * List of valid protocol versions
      *
-     * @var array
+     * @var list<string>
      */
     protected $validProtocolVersions = [
         '1.0',
         '1.1',
         '2.0',
+        '3.0',
     ];
 
     /**
      * Message body
      *
-     * @var mixed
+     * @var string|null
      */
     protected $body;
 
     /**
      * Returns the Message's body.
      *
-     * @return mixed
+     * @return string|null
      */
     public function getBody()
     {
@@ -60,6 +65,8 @@ class Message implements MessageInterface
      *
      * @deprecated Use Message::headers() to make room for PSR-7
      *
+     * @TODO Incompatible return value with PSR-7
+     *
      * @codeCoverageIgnore
      */
     public function getHeaders(): array
@@ -71,11 +78,13 @@ class Message implements MessageInterface
      * Returns a single header object. If multiple headers with the same
      * name exist, then will return an array of header objects.
      *
-     * @return array|Header|null
-     *
      * @deprecated Use Message::header() to make room for PSR-7
      *
+     * @TODO Incompatible return value with PSR-7
+     *
      * @codeCoverageIgnore
+     *
+     * @return array<string, Header>|Header|null
      */
     public function getHeader(string $name)
     {
@@ -105,6 +114,13 @@ class Message implements MessageInterface
      */
     public function getHeaderLine(string $name): string
     {
+        if ($this->hasMultipleHeaders($name)) {
+            throw new InvalidArgumentException(
+                'The header "' . $name . '" already has multiple headers.'
+                . ' You cannot use getHeaderLine().',
+            );
+        }
+
         $origName = $this->getHeaderName($name);
 
         if (! array_key_exists($origName, $this->headers)) {

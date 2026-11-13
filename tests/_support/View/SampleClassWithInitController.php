@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -23,7 +25,9 @@ use Psr\Log\LoggerInterface;
  */
 class SampleClassWithInitController
 {
-    public function initController(RequestInterface $request, ResponseInterface $response, LoggerInterface $logger)
+    private ResponseInterface $response;
+
+    public function initController(RequestInterface $request, ResponseInterface $response, LoggerInterface $logger): void
     {
         $this->response = $response;
     }

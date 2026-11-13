@@ -1,0 +1,16 @@
+#!/bin/bash
+set -o pipefail
+
+if [[ -z $1 ]]; then
+    echo "validate-version requires a version identifier"
+    exit 1
+fi
+
+CHANGELOG="docs/changelogs/v$1.md"
+
+if ! grep -q -e "'$1'" system/CodeIgniter.php || [[ ! -f $CHANGELOG ]] || grep -q -e "^Release Date: Unreleased" "$CHANGELOG"; then
+    echo "CodeIgniter version is not updated to v"$1""
+    exit 1
+fi
+
+echo "CodeIgniter version is updated to v"$1""

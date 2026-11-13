@@ -1,0 +1,76 @@
+name: Reusable Coveralls Upload
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: The PHP version the workflow should run
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  coveralls:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer
+          coverage: xdebug
+
+      - name: Download coverage files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: build/cov
+
+      - name: Display structure of downloaded files
+        run: ls -R
+        working-directory: build/cov
+
+      - name: Get composer cache directory
+        id: composer-cache
+        run: |
+          echo "COMPOSER_CACHE_FILES_DIR=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.composer-cache.outputs.COMPOSER_CACHE_FILES_DIR }}
+          key: composer-php-${{ inputs.php-version }}-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            composer-php-${{ inputs.php-version }}-
+            composer-
+
+      - name: Cache PHPUnit's static analysis cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/.phpunit.cache/code-coverage
+          key: phpunit-code-coverage-${{ hashFiles('**/phpunit.*') }}
+          restore-keys: |
+            phpunit-code-coverage-
+
+      - name: Install dependencies
+        run: composer update --ansi
+
+      - name: Merge coverage files
+        run: |
+          jq '.autoload."psr-4" += {"Config\\": "app/Config/"}' composer.json > temp.json && mv temp.json composer.json
+          composer dump-autoload
+          vendor/bin/phpcov merge --clover build/logs/clover.xml build/cov
+
+      - name: Upload coverage to Coveralls
+        run: |
+          composer global require php-coveralls/php-coveralls
+          php-coveralls --verbose --exclude-no-stmt --ansi
+        env:
+          COVERALLS_REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}

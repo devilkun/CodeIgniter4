@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -17,6 +19,7 @@ use CodeIgniter\Images\Exceptions\ImageException;
 use CodeIgniter\Images\Handlers\BaseHandler;
 use CodeIgniter\Test\CIUnitTestCase;
 use org\bovigo\vfs\vfsStream;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Test the common image processing functionality.
@@ -28,21 +31,24 @@ use org\bovigo\vfs\vfsStream;
  *
  * @internal
  */
+#[Group('Others')]
 final class BaseHandlerTest extends CIUnitTestCase
 {
+    private string $origin;
+    private string $start;
+    private string $path;
+
     protected function setUp(): void
     {
         if (! extension_loaded('gd')) {
             $this->markTestSkipped('The GD extension is not available.');
-
-            return;
         }
 
         // create virtual file system
-        $this->root = vfsStream::setup();
+        $root = vfsStream::setup();
         // copy our support files
         $this->origin = SUPPORTPATH . 'Images/';
-        vfsStream::copyFromFileSystem($this->origin, $this->root);
+        vfsStream::copyFromFileSystem($this->origin, $root);
         // make subfolders
         $structure = [
             'work'     => [],
@@ -50,39 +56,39 @@ final class BaseHandlerTest extends CIUnitTestCase
         ];
         vfsStream::create($structure);
         // with one of them read only
-        $this->root->getChild('wontwork')->chmod(0400);
+        $root->getChild('wontwork')->chmod(0400);
 
         // for VFS tests
-        $this->start = $this->root->url() . '/';
+        $this->start = $root->url() . '/';
         $this->path  = $this->start . 'ci-logo.png';
     }
 
-    public function testNew()
+    public function testNew(): void
     {
         $handler = Services::image('gd', null, false);
-        $this->assertTrue($handler instanceof BaseHandler);
+        $this->assertInstanceOf(BaseHandler::class, $handler);
     }
 
-    public function testWithFile()
+    public function testWithFile(): void
     {
         $path    = $this->origin . 'ci-logo.png';
         $handler = Services::image('gd', null, false);
         $handler->withFile($path);
 
         $image = $handler->getFile();
-        $this->assertTrue($image instanceof Image);
+        $this->assertInstanceOf(Image::class, $image);
         $this->assertSame(155, $image->origWidth);
         $this->assertSame($path, $image->getPathname());
     }
 
-    public function testMissingFile()
+    public function testMissingFile(): void
     {
         $this->expectException(FileNotFoundException::class);
         $handler = Services::image('gd', null, false);
         $handler->withFile($this->start . 'No_such_file.jpg');
     }
 
-    public function testNonImageFile()
+    public function testNonImageFile(): void
     {
         $this->expectException(ImageException::class);
         $handler = Services::image('gd', null, false);
@@ -92,7 +98,7 @@ final class BaseHandlerTest extends CIUnitTestCase
         $handler->resize(100, 100);
     }
 
-    public function testForgotWithFile()
+    public function testForgotWithFile(): void
     {
         $this->expectException(ImageException::class);
         $handler = Services::image('gd', null, false);
@@ -101,24 +107,24 @@ final class BaseHandlerTest extends CIUnitTestCase
         $handler->resize(100, 100);
     }
 
-    public function testFileTypes()
+    public function testFileTypes(): void
     {
         $handler = Services::image('gd', null, false);
         $handler->withFile($this->start . 'ci-logo.png');
         $image = $handler->getFile();
-        $this->assertTrue($image instanceof Image);
+        $this->assertInstanceOf(Image::class, $image);
 
         $handler->withFile($this->start . 'ci-logo.jpeg');
         $image = $handler->getFile();
-        $this->assertTrue($image instanceof Image);
+        $this->assertInstanceOf(Image::class, $image);
 
         $handler->withFile($this->start . 'ci-logo.gif');
         $image = $handler->getFile();
-        $this->assertTrue($image instanceof Image);
+        $this->assertInstanceOf(Image::class, $image);
     }
 
     // Something handled by our Image
-    public function testImageHandled()
+    public function testImageHandled(): void
     {
         $handler = Services::image('gd', null, false);
         $handler->withFile($this->path);

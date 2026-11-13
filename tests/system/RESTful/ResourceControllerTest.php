@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -17,14 +19,22 @@ use CodeIgniter\Format\JSONFormatter;
 use CodeIgniter\Format\XMLFormatter;
 use CodeIgniter\HTTP\IncomingRequest;
 use CodeIgniter\HTTP\Response;
-use CodeIgniter\HTTP\URI;
+use CodeIgniter\HTTP\SiteURI;
 use CodeIgniter\HTTP\UserAgent;
+use CodeIgniter\Model;
+use CodeIgniter\Router\RouteCollection;
+use CodeIgniter\Superglobals;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\Mock\MockCodeIgniter;
 use CodeIgniter\Test\Mock\MockResourceController;
 use Config\App;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
+use PHPUnit\Framework\Attributes\WithoutErrorHandler;
 use Psr\Log\NullLogger;
 use Tests\Support\Models\UserModel;
+use Tests\Support\RESTful\Worker;
 
 /**
  * Exercise our ResourceController class.
@@ -32,38 +42,48 @@ use Tests\Support\Models\UserModel;
  * so we need to make sure that the methods routed to
  * return correct responses.
  *
- * @runTestsInSeparateProcesses
- * @preserveGlobalState         disabled
- *
  * @internal
  */
+#[Group('SeparateProcess')]
+#[PreserveGlobalState(false)]
+#[RunTestsInSeparateProcesses]
 final class ResourceControllerTest extends CIUnitTestCase
 {
-    /**
-     * @var CodeIgniter
-     */
-    protected $codeigniter;
+    private CodeIgniter $codeigniter;
 
-    /**
-     * @var \CodeIgniter\Router\RoutesCollection
-     */
-    protected $routes;
-
+    #[WithoutErrorHandler]
     protected function setUp(): void
     {
         parent::setUp();
 
-        Services::reset();
+        $this->resetServices(true);
+        $this->resetFactories();
 
-        $_SERVER['SERVER_PROTOCOL'] = 'HTTP/1.1';
+        Services::injectMock('superglobals', new Superglobals());
+    }
+
+    private function routes(): RouteCollection
+    {
+        $this->assertInstanceOf(RouteCollection::class, $this->routes);
+
+        return $this->routes;
+    }
+
+    private function createCodeigniter(): void
+    {
+        service('superglobals')->setServer('SERVER_PROTOCOL', 'HTTP/1.1');
 
         // Inject mock router.
-        $this->routes = Services::routes();
-        $this->routes->resource('work', ['controller' => '\Tests\Support\RESTful\Worker']);
-        Services::injectMock('routes', $this->routes);
+        $this->routes = service('routes');
+        $this->routes()->resource('work', ['controller' => '\\' . Worker::class]);
+        Services::injectMock('routes', $this->routes());
 
         $config            = new App();
         $this->codeigniter = new MockCodeIgniter($config);
+
+        $response = service('response');
+        $this->assertInstanceOf(Response::class, $response);
+        $response->pretend();
     }
 
     protected function tearDown(): void
@@ -75,165 +95,189 @@ final class ResourceControllerTest extends CIUnitTestCase
         }
     }
 
-    public function testResourceGet()
+    public function testResourceGet(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
             'index.php',
             'work',
-        ];
-        $_SERVER['argc'] = 2;
+        ]);
+        service('superglobals')->setServer('argc', 2);
 
-        $_SERVER['REQUEST_URI']    = '/work';
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_URI', '/work');
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
+
+        $this->createCodeigniter();
 
         ob_start();
-        $this->codeigniter->useSafeOutput(true)->run($this->routes);
+        $this->codeigniter->run($this->routes());
         $output = ob_get_clean();
 
-        $this->assertStringContainsString(lang('RESTful.notImplemented', ['index']), $output);
+        $error = json_decode($output)->messages->error;
+        $this->assertStringContainsString(lang('RESTful.notImplemented', ['index']), (string) $error);
     }
 
-    public function testResourceGetNew()
+    public function testResourceGetNew(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
             'index.php',
             'work',
             'new',
-        ];
-        $_SERVER['argc'] = 3;
+        ]);
+        service('superglobals')->setServer('argc', 3);
 
-        $_SERVER['REQUEST_URI']    = '/work/new';
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_URI', '/work/new');
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
+
+        $this->createCodeigniter();
 
         ob_start();
-        $this->codeigniter->useSafeOutput(true)->run($this->routes);
+        $this->codeigniter->run($this->routes());
         $output = ob_get_clean();
 
-        $this->assertStringContainsString(lang('RESTful.notImplemented', ['new']), $output);
+        $error = json_decode($output)->messages->error;
+        $this->assertStringContainsString(lang('RESTful.notImplemented', ['new']), (string) $error);
     }
 
-    public function testResourceGetEdit()
+    public function testResourceGetEdit(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
             'index.php',
             'work',
             '1',
             'edit',
-        ];
-        $_SERVER['argc'] = 4;
+        ]);
+        service('superglobals')->setServer('argc', 4);
 
-        $_SERVER['REQUEST_URI']    = '/work/1/edit';
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_URI', '/work/1/edit');
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
+
+        $this->createCodeigniter();
 
         ob_start();
-        $this->codeigniter->useSafeOutput(true)->run($this->routes);
+        $this->codeigniter->run($this->routes());
         $output = ob_get_clean();
 
-        $this->assertStringContainsString(lang('RESTful.notImplemented', ['edit']), $output);
+        $error = json_decode($output)->messages->error;
+        $this->assertStringContainsString(lang('RESTful.notImplemented', ['edit']), (string) $error);
     }
 
-    public function testResourceGetOne()
+    public function testResourceGetOne(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
             'index.php',
             'work',
             '1',
-        ];
-        $_SERVER['argc'] = 3;
+        ]);
+        service('superglobals')->setServer('argc', 3);
 
-        $_SERVER['REQUEST_URI']    = '/work/1';
-        $_SERVER['REQUEST_METHOD'] = 'GET';
+        service('superglobals')->setServer('REQUEST_URI', '/work/1');
+        service('superglobals')->setServer('REQUEST_METHOD', 'GET');
+
+        $this->createCodeigniter();
 
         ob_start();
-        $this->codeigniter->useSafeOutput(true)->run($this->routes);
+        $this->codeigniter->run($this->routes());
         $output = ob_get_clean();
 
-        $this->assertStringContainsString(lang('RESTful.notImplemented', ['show']), $output);
+        $error = json_decode($output)->messages->error;
+        $this->assertStringContainsString(lang('RESTful.notImplemented', ['show']), (string) $error);
     }
 
-    public function testResourcePost()
+    public function testResourcePost(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
             'index.php',
             'work',
-        ];
-        $_SERVER['argc'] = 2;
+        ]);
+        service('superglobals')->setServer('argc', 2);
 
-        $_SERVER['REQUEST_URI']    = '/work';
-        $_SERVER['REQUEST_METHOD'] = 'POST';
+        service('superglobals')->setServer('REQUEST_URI', '/work');
+        service('superglobals')->setServer('REQUEST_METHOD', 'POST');
 
-        ob_start();
-        $this->codeigniter->useSafeOutput(true)->run($this->routes);
-        $output = ob_get_clean();
-
-        $this->assertStringContainsString(lang('RESTful.notImplemented', ['create']), $output);
-    }
-
-    public function testResourcePatch()
-    {
-        $_SERVER['argv'] = [
-            'index.php',
-            'work',
-            '123',
-        ];
-        $_SERVER['argc'] = 3;
-
-        $_SERVER['REQUEST_URI']    = '/work/123';
-        $_SERVER['REQUEST_METHOD'] = 'PATCH';
+        $this->createCodeigniter();
 
         ob_start();
-        $this->codeigniter->useSafeOutput(true)->run($this->routes);
+        $this->codeigniter->run($this->routes());
         $output = ob_get_clean();
 
-        $this->assertStringContainsString(lang('RESTful.notImplemented', ['patch']), $output);
+        $error = json_decode($output)->messages->error;
+        $this->assertStringContainsString(lang('RESTful.notImplemented', ['create']), (string) $error);
     }
 
-    public function testResourcePut()
+    public function testResourcePatch(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
             'index.php',
             'work',
             '123',
-        ];
-        $_SERVER['argc'] = 3;
+        ]);
+        service('superglobals')->setServer('argc', 3);
 
-        $_SERVER['REQUEST_URI']    = '/work/123';
-        $_SERVER['REQUEST_METHOD'] = 'PUT';
+        service('superglobals')->setServer('REQUEST_URI', '/work/123');
+        service('superglobals')->setServer('REQUEST_METHOD', 'PATCH');
+
+        $this->createCodeigniter();
 
         ob_start();
-        $this->codeigniter->useSafeOutput(true)->run($this->routes);
+        $this->codeigniter->run($this->routes());
         $output = ob_get_clean();
 
-        $this->assertStringContainsString(lang('RESTful.notImplemented', ['put']), $output);
+        $error = json_decode($output)->messages->error;
+        $this->assertStringContainsString(lang('RESTful.notImplemented', ['update']), (string) $error);
     }
 
-    public function testResourceDelete()
+    public function testResourcePut(): void
     {
-        $_SERVER['argv'] = [
+        service('superglobals')->setServer('argv', [
             'index.php',
             'work',
             '123',
-        ];
-        $_SERVER['argc'] = 3;
+        ]);
+        service('superglobals')->setServer('argc', 3);
 
-        $_SERVER['REQUEST_URI']    = '/work/123';
-        $_SERVER['REQUEST_METHOD'] = 'DELETE';
+        service('superglobals')->setServer('REQUEST_URI', '/work/123');
+        service('superglobals')->setServer('REQUEST_METHOD', 'PUT');
+
+        $this->createCodeigniter();
 
         ob_start();
-        $this->codeigniter->useSafeOutput(true)->run($this->routes);
+        $this->codeigniter->run($this->routes());
         $output = ob_get_clean();
 
-        $this->assertStringContainsString(lang('RESTful.notImplemented', ['delete']), $output);
+        $error = json_decode($output)->messages->error;
+        $this->assertStringContainsString(lang('RESTful.notImplemented', ['update']), (string) $error);
     }
 
-    public function testModel()
+    public function testResourceDelete(): void
+    {
+        service('superglobals')->setServer('argv', [
+            'index.php',
+            'work',
+            '123',
+        ]);
+        service('superglobals')->setServer('argc', 3);
+
+        service('superglobals')->setServer('REQUEST_URI', '/work/123');
+        service('superglobals')->setServer('REQUEST_METHOD', 'DELETE');
+
+        $this->createCodeigniter();
+
+        ob_start();
+        $this->codeigniter->run($this->routes());
+        $output = ob_get_clean();
+
+        $error = json_decode($output)->messages->error;
+        $this->assertStringContainsString(lang('RESTful.notImplemented', ['delete']), (string) $error);
+    }
+
+    public function testModel(): void
     {
         $resource = new MockResourceController();
         $this->assertEmpty($resource->getModel());
         $this->assertEmpty($resource->getModelName());
     }
 
-    public function testModelBogus()
+    public function testModelBogus(): void
     {
         $resource = new MockResourceController();
 
@@ -242,43 +286,43 @@ final class ResourceControllerTest extends CIUnitTestCase
         $this->assertSame('Something', $resource->getModelName());
     }
 
-    public function testModelByName()
+    public function testModelByName(): void
     {
         $resource = new MockResourceController();
-        $resource->setModel('\Tests\Support\Models\UserModel');
-        $this->assertInstanceOf('CodeIgniter\Model', $resource->getModel());
-        $this->assertSame('\Tests\Support\Models\UserModel', $resource->getModelName());
+        $resource->setModel(UserModel::class);
+        $this->assertInstanceOf(Model::class, $resource->getModel());
+        $this->assertSame(UserModel::class, $resource->getModelName());
     }
 
-    public function testModelByObject()
+    public function testModelByObject(): void
     {
         $resource = new MockResourceController();
         $model    = new UserModel();
         $resource->setModel($model);
-        $this->assertInstanceOf('CodeIgniter\Model', $resource->getModel());
+        $this->assertInstanceOf(Model::class, $resource->getModel());
 
         // Note that the leading backslash is missing if we build it this way
-        $this->assertSame('Tests\Support\Models\UserModel', $resource->getModelName());
+        $this->assertSame(UserModel::class, $resource->getModelName());
     }
 
-    public function testFormat()
+    public function testFormat(): void
     {
         $resource = new MockResourceController();
         $this->assertSame('json', $resource->getFormat());
 
-        $resource->setFormat('Nonsense');
+        $resource->setFormat('Nonsense'); // @phpstan-ignore argument.type (Testing that an invalid format is silently ignored)
         $this->assertSame('json', $resource->getFormat());
 
         $resource->setFormat('xml');
         $this->assertSame('xml', $resource->getFormat());
     }
 
-    public function testJSONFormatOutput()
+    public function testJSONFormatOutput(): void
     {
         $resource = new MockResourceController();
 
         $config = new App();
-        $uri    = new URI();
+        $uri    = new SiteURI($config);
         $agent  = new UserAgent();
 
         $request  = new IncomingRequest($config, $uri, '', $agent);
@@ -292,7 +336,7 @@ final class ResourceControllerTest extends CIUnitTestCase
             'foo' => 'bar',
         ];
 
-        $theResponse = $resource->respond($data);
+        $theResponse = $this->invoke($resource, 'respond', [$data]);
         $result      = $theResponse->getBody();
 
         $JSONFormatter = new JSONFormatter();
@@ -301,12 +345,12 @@ final class ResourceControllerTest extends CIUnitTestCase
         $this->assertSame($expected, $result);
     }
 
-    public function testXMLFormatOutput()
+    public function testXMLFormatOutput(): void
     {
         $resource = new MockResourceController();
 
         $config = new App();
-        $uri    = new URI();
+        $uri    = new SiteURI($config);
         $agent  = new UserAgent();
 
         $request  = new IncomingRequest($config, $uri, '', $agent);
@@ -320,12 +364,22 @@ final class ResourceControllerTest extends CIUnitTestCase
             'foo' => 'bar',
         ];
 
-        $theResponse = $resource->respond($data);
+        $theResponse = $this->invoke($resource, 'respond', [$data]);
         $result      = $theResponse->getBody();
 
         $XMLFormatter = new XMLFormatter();
         $expected     = $XMLFormatter->format($data);
 
         $this->assertSame($expected, $result);
+    }
+
+    /**
+     * @param list<mixed> $args
+     */
+    private function invoke(object $controller, string $method, array $args = []): object
+    {
+        $method = self::getPrivateMethodInvoker($controller, $method);
+
+        return $method(...$args);
     }
 }

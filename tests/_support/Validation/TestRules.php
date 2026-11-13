@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,6 +15,9 @@ namespace Tests\Support\Validation;
 
 class TestRules
 {
+    /**
+     * @param-out string $error
+     */
     public function customError(string $str, ?string &$error = null)
     {
         $error = 'My lovely error';
@@ -31,5 +36,10 @@ class TestRules
         }
 
         return $find;
+    }
+
+    public function array_count($value, $count): bool
+    {
+        return is_array($value) && count($value) === (int) $count;
     }
 }

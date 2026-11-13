@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,17 +14,23 @@
 namespace CodeIgniter\Database\Postgre;
 
 use CodeIgniter\Database\BaseBuilder;
+use CodeIgniter\Database\BaseResult;
 use CodeIgniter\Database\Exceptions\DatabaseException;
+use CodeIgniter\Database\Query;
+use CodeIgniter\Database\RawSql;
+use CodeIgniter\Exceptions\InvalidArgumentException;
 
 /**
  * Builder for Postgre
+ *
+ * @extends BaseBuilder<Connection>
  */
 class Builder extends BaseBuilder
 {
     /**
      * ORDER BY random keyword
      *
-     * @var array
+     * @var list<string>
      */
     protected $randomKeyword = [
         'RANDOM()',
@@ -32,7 +40,7 @@ class Builder extends BaseBuilder
      * Specifies which sql statements
      * support the ignore option.
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $supportedIgnoreStatements = [
         'insert' => 'ON CONFLICT DO NOTHING',
@@ -48,8 +56,8 @@ class Builder extends BaseBuilder
     {
         $sql = parent::compileIgnore($statement);
 
-        if (! empty($sql)) {
-            $sql = ' ' . trim($sql);
+        if ($sql !== '') {
+            return ' ' . trim($sql);
         }
 
         return $sql;
@@ -60,7 +68,7 @@ class Builder extends BaseBuilder
      *
      * @param string $direction ASC, DESC or RANDOM
      *
-     * @return BaseBuilder
+     * @return $this
      */
     public function orderBy(string $orderBy, string $direction = '', ?bool $escape = null)
     {
@@ -85,33 +93,45 @@ class Builder extends BaseBuilder
     /**
      * Increments a numeric column by the specified value.
      *
-     * @throws DatabaseException
+     * @return bool
      *
-     * @return mixed
+     * @throws DatabaseException
      */
     public function increment(string $column, int $value = 1)
     {
         $column = $this->db->protectIdentifiers($column);
 
-        $sql = $this->_update($this->QBFrom[0], [$column => "to_number({$column}, '9999999') + {$value}"]);
+        $sql = $this->_update($this->QBFrom[0], [$column => "CAST({$column} AS numeric) + {$value}"]);
 
-        return $this->db->query($sql, $this->binds, false);
+        if (! $this->testMode) {
+            $this->resetWrite();
+
+            return $this->db->query($sql, $this->binds, false);
+        }
+
+        return true;
     }
 
     /**
      * Decrements a numeric column by the specified value.
      *
-     * @throws DatabaseException
+     * @return bool
      *
-     * @return mixed
+     * @throws DatabaseException
      */
     public function decrement(string $column, int $value = 1)
     {
         $column = $this->db->protectIdentifiers($column);
 
-        $sql = $this->_update($this->QBFrom[0], [$column => "to_number({$column}, '9999999') - {$value}"]);
+        $sql = $this->_update($this->QBFrom[0], [$column => "CAST({$column} AS numeric) - {$value}"]);
 
-        return $this->db->query($sql, $this->binds, false);
+        if (! $this->testMode) {
+            $this->resetWrite();
+
+            return $this->db->query($sql, $this->binds, false);
+        }
+
+        return true;
     }
 
     /**
@@ -120,11 +140,11 @@ class Builder extends BaseBuilder
      * we simply do a DELETE and an INSERT on the first key/value
      * combo, assuming that it's either the primary key or a unique key.
      *
-     * @param array|null $set An associative array of insert values
+     * @param array<string, mixed>|null $set An associative array of insert values
+     *
+     * @return BaseResult|false|Query|string
      *
      * @throws DatabaseException
-     *
-     * @return mixed
      */
     public function replace(?array $set = null)
     {
@@ -132,8 +152,8 @@ class Builder extends BaseBuilder
             $this->set($set);
         }
 
-        if (! $this->QBSet) {
-            if (CI_DEBUG) {
+        if ($this->QBSet === []) {
+            if ($this->db->DBDebug) {
                 throw new DatabaseException('You must use the "set" method to update an entry.');
             }
 
@@ -143,7 +163,7 @@ class Builder extends BaseBuilder
         $table = $this->QBFrom[0];
         $set   = $this->binds;
 
-        array_walk($set, static function (array &$item) {
+        array_walk($set, static function (array &$item): void {
             $item = $item[0];
         });
 
@@ -153,9 +173,9 @@ class Builder extends BaseBuilder
         $builder = $this->db->table($table);
         $exists  = $builder->where($key, $value, true)->get()->getFirstRow();
 
-        if (empty($exists) && $this->testMode) {
+        if ($exists === null && $this->testMode) {
             $result = $this->getCompiledInsert();
-        } elseif (empty($exists)) {
+        } elseif ($exists === null) {
             $result = $builder->insert($set);
         } elseif ($this->testMode) {
             $result = $this->where($key, $value, true)->getCompiledUpdate();
@@ -166,6 +186,7 @@ class Builder extends BaseBuilder
 
         unset($builder);
         $this->resetWrite();
+        $this->binds = [];
 
         return $result;
     }
@@ -183,21 +204,38 @@ class Builder extends BaseBuilder
      */
     protected function _insertBatch(string $table, array $keys, array $values): string
     {
-        return trim(sprintf('INSERT INTO %s (%s) VALUES %s %s', $table, implode(', ', $keys), implode(', ', $values), $this->compileIgnore('insert')));
+        $sql = $this->QBOptions['sql'] ?? '';
+
+        // if this is the first iteration of batch then we need to build skeleton sql
+        if ($sql === '') {
+            $sql = 'INSERT INTO ' . $table . '(' . implode(', ', $keys) . ")\n{:_table_:}\n";
+
+            $sql .= $this->compileIgnore('insert');
+
+            $this->QBOptions['sql'] = $sql;
+        }
+
+        if (isset($this->QBOptions['setQueryAsData'])) {
+            $data = $this->QBOptions['setQueryAsData'];
+        } else {
+            $data = 'VALUES ' . implode(', ', $this->formatValues($values));
+        }
+
+        return str_replace('{:_table_:}', $data, $sql);
     }
 
     /**
      * Compiles a delete string and runs the query
      *
-     * @param mixed $where
+     * @param array<array-key, mixed>|RawSql|string $where
+     *
+     * @return bool|string
      *
      * @throws DatabaseException
-     *
-     * @return mixed
      */
     public function delete($where = '', ?int $limit = null, bool $resetData = true)
     {
-        if (! empty($limit) || ! empty($this->QBLimit)) {
+        if ($limit !== null && $limit !== 0 || ($this->QBLimit !== false && $this->QBLimit !== 0)) {
             throw new DatabaseException('PostgreSQL does not allow LIMITs on DELETE queries.');
         }
 
@@ -219,46 +257,13 @@ class Builder extends BaseBuilder
      */
     protected function _update(string $table, array $values): string
     {
-        if (! empty($this->QBLimit)) {
+        if ($this->QBLimit !== false && $this->QBLimit !== 0) {
             throw new DatabaseException('Postgres does not support LIMITs with UPDATE queries.');
         }
 
         $this->QBOrderBy = [];
 
         return parent::_update($table, $values);
-    }
-
-    /**
-     * Generates a platform-specific batch update string from the supplied data
-     */
-    protected function _updateBatch(string $table, array $values, string $index): string
-    {
-        $ids   = [];
-        $final = [];
-
-        foreach ($values as $val) {
-            $ids[] = $val[$index];
-
-            foreach (array_keys($val) as $field) {
-                if ($field !== $index) {
-                    $final[$field] = $final[$field] ?? [];
-
-                    $final[$field][] = "WHEN {$val[$index]} THEN {$val[$field]}";
-                }
-            }
-        }
-
-        $cases = '';
-
-        foreach ($final as $k => $v) {
-            $cases .= "{$k} = (CASE {$index}\n"
-                    . implode("\n", $v)
-                    . "\nELSE {$k} END), ";
-        }
-
-        $this->where("{$index} IN(" . implode(',', $ids) . ')', null, false);
-
-        return "UPDATE {$table} SET " . substr($cases, 0, -2) . $this->compileWhereHaving('QBWhere');
     }
 
     /**
@@ -292,7 +297,7 @@ class Builder extends BaseBuilder
      */
     protected function _like_statement(?string $prefix, string $column, ?string $not, string $bind, bool $insensitiveSearch = false): string
     {
-        $op = $insensitiveSearch === true ? 'ILIKE' : 'LIKE';
+        $op = $insensitiveSearch ? 'ILIKE' : 'LIKE';
 
         return "{$prefix} {$column} {$not} {$op} :{$bind}:";
     }
@@ -300,14 +305,372 @@ class Builder extends BaseBuilder
     /**
      * Generates the JOIN portion of the query
      *
-     * @return BaseBuilder
+     * @param RawSql|string $cond
+     *
+     * @return $this
      */
-    public function join(string $table, string $cond, string $type = '', ?bool $escape = null)
+    public function join(string $table, $cond, string $type = '', ?bool $escape = null)
     {
         if (! in_array('FULL OUTER', $this->joinTypes, true)) {
             $this->joinTypes = array_merge($this->joinTypes, ['FULL OUTER']);
         }
 
         return parent::join($table, $cond, $type, $escape);
+    }
+
+    /**
+     * Generates a platform-specific batch update string from the supplied data
+     *
+     * @used-by batchExecute()
+     *
+     * @param string                 $table  Protected table name
+     * @param list<string>           $keys   QBKeys
+     * @param list<list<int|string>> $values QBSet
+     */
+    protected function _updateBatch(string $table, array $keys, array $values): string
+    {
+        $sql = $this->QBOptions['sql'] ?? '';
+
+        // if this is the first iteration of batch then we need to build skeleton sql
+        if ($sql === '') {
+            $constraints = $this->QBOptions['constraints'] ?? [];
+
+            if ($constraints === []) {
+                if ($this->db->DBDebug) {
+                    throw new DatabaseException('You must specify a constraint to match on for batch updates.'); // @codeCoverageIgnore
+                }
+
+                return ''; // @codeCoverageIgnore
+            }
+
+            $updateFields = $this->QBOptions['updateFields'] ??
+                $this->updateFields($keys, false, $constraints)->QBOptions['updateFields'] ??
+                [];
+
+            $alias = $this->QBOptions['alias'] ?? '_u';
+
+            $sql = 'UPDATE ' . $this->compileIgnore('update') . $table . "\n";
+
+            $sql .= "SET\n";
+
+            $that = $this;
+            $sql .= implode(
+                ",\n",
+                array_map(
+                    static fn ($key, $value): string => $key . ($value instanceof RawSql ?
+                            ' = ' . $value :
+                            ' = ' . $that->cast($alias . '.' . $value, $that->getFieldType($table, $key))),
+                    array_keys($updateFields),
+                    $updateFields,
+                ),
+            ) . "\n";
+
+            $sql .= "FROM (\n{:_table_:}";
+
+            $sql .= ') ' . $alias . "\n";
+
+            $sql .= 'WHERE ' . implode(
+                ' AND ',
+                array_map(
+                    static function ($key, $value) use ($table, $alias, $that): RawSql|string {
+                        if ($value instanceof RawSql && is_string($key)) {
+                            return $table . '.' . $key . ' = ' . $value;
+                        }
+
+                        if ($value instanceof RawSql) {
+                            return $value;
+                        }
+
+                        return $table . '.' . $value . ' = '
+                            . $that->cast($alias . '.' . $value, $that->getFieldType($table, $value));
+                    },
+                    array_keys($constraints),
+                    $constraints,
+                ),
+            );
+
+            $this->QBOptions['sql'] = $sql;
+        }
+
+        if (isset($this->QBOptions['setQueryAsData'])) {
+            $data = $this->QBOptions['setQueryAsData'];
+        } else {
+            $updateFields = $this->QBOptions['updateFields'] ?? [];
+
+            $data = implode(
+                " UNION ALL\n",
+                array_map(
+                    fn (array $value): string => sprintf('SELECT %s', implode(', ', array_map(
+                        fn (string $key, float|int|string $index): string => sprintf(
+                            '%s %s',
+                            $this->castValue((string) $index, $this->getSourceType($table, $key, $updateFields)),
+                            $key,
+                        ),
+                        $keys,
+                        $value,
+                    ))),
+                    $values,
+                ),
+            ) . "\n";
+        }
+
+        return str_replace('{:_table_:}', $data, $sql);
+    }
+
+    /**
+     * Returns the type shared by every destination column fed from the source key, or null when they differ.
+     *
+     * @param array<array-key, RawSql|string> $map Destination column to source key.
+     */
+    private function getSourceType(string $table, string $key, array $map): ?string
+    {
+        $columns = array_filter(array_keys($map, $key, true), is_string(...));
+
+        if ($columns === []) {
+            return $this->getFieldType($table, $key);
+        }
+
+        $types = array_unique(array_map(fn (string $column): ?string => $this->getFieldType($table, $column), $columns));
+
+        return count($types) === 1 ? reset($types) : null;
+    }
+
+    /**
+     * Returns the literal cast to the column type, except a numeric literal for a numeric column, which stays as is so a non-integral value never rounds into a match.
+     */
+    private function castValue(string $value, ?string $type): string
+    {
+        $isNumericType = in_array(strtolower((string) $type), ['smallint', 'integer', 'bigint', 'numeric', 'real', 'double precision'], true);
+
+        if ($isNumericType && is_numeric($value)) {
+            return $value;
+        }
+
+        return $this->cast($value, $type);
+    }
+
+    /**
+     * Returns cast expression.
+     *
+     * @TODO move this to BaseBuilder in 4.5.0
+     */
+    private function cast(string $expression, ?string $type): string
+    {
+        return ($type === null) ? $expression : 'CAST(' . $expression . ' AS ' . strtoupper($type) . ')';
+    }
+
+    /**
+     * Returns the filed type from database meta data.
+     *
+     * @param string $table     Protected table name.
+     * @param string $fieldName Field name. May be protected.
+     */
+    private function getFieldType(string $table, string $fieldName): ?string
+    {
+        $fieldName = trim($fieldName, $this->db->escapeChar);
+
+        if (! isset($this->QBOptions['fieldTypes'][$table])) {
+            $this->QBOptions['fieldTypes'][$table] = [];
+
+            foreach ($this->db->getFieldData($table) as $field) {
+                $type = $field->type;
+
+                // information_schema reports enum, domain and array columns as `USER-DEFINED` or `ARRAY`, which are not castable names.
+                if ($type === 'USER-DEFINED' || $type === 'ARRAY') {
+                    continue;
+                }
+
+                // `character` without a length is `character(1)` and `character(n)` truncates on cast,
+                // while `bpchar` keeps the full value.
+                if ($type === 'character') {
+                    $type = 'bpchar';
+                }
+
+                $this->QBOptions['fieldTypes'][$table][$field->name] = $type;
+            }
+        }
+
+        return $this->QBOptions['fieldTypes'][$table][$fieldName] ?? null;
+    }
+
+    /**
+     * Generates a platform-specific upsertBatch string from the supplied data
+     *
+     * @throws DatabaseException
+     */
+    protected function _upsertBatch(string $table, array $keys, array $values): string
+    {
+        $sql = $this->QBOptions['sql'] ?? '';
+
+        // if this is the first iteration of batch then we need to build skeleton sql
+        if ($sql === '') {
+            $fieldNames = array_map(static fn ($columnName): string => trim($columnName, '"'), $keys);
+
+            $constraints = $this->QBOptions['constraints'] ?? [];
+
+            if ($constraints === []) {
+                $allIndexes = array_filter($this->db->getIndexData($table), static function ($index) use ($fieldNames): bool {
+                    $hasAllFields = count(array_intersect($index->fields, $fieldNames)) === count($index->fields);
+
+                    return ($index->type === 'UNIQUE' || $index->type === 'PRIMARY') && $hasAllFields;
+                });
+
+                foreach ($allIndexes as $index) {
+                    $constraints = $index->fields;
+                    break;
+                }
+
+                $constraints = $this->onConstraint($constraints)->QBOptions['constraints'] ?? [];
+            }
+
+            if ($constraints === []) {
+                if ($this->db->DBDebug) {
+                    throw new DatabaseException('No constraint found for upsert.');
+                }
+
+                return ''; // @codeCoverageIgnore
+            }
+
+            // in value set - replace null with DEFAULT where constraint is presumed not null
+            // autoincrement identity field must use DEFAULT and not NULL
+            // this could be removed in favour of leaving to developer but does make things easier and function like other DBMS
+            foreach ($constraints as $constraint) {
+                $key = array_search(trim((string) $constraint, '"'), $fieldNames, true);
+
+                if ($key !== false) {
+                    foreach ($values as $arrayKey => $value) {
+                        if (strtoupper((string) $value[$key]) === 'NULL') {
+                            $values[$arrayKey][$key] = 'DEFAULT';
+                        }
+                    }
+                }
+            }
+
+            $alias = $this->QBOptions['alias'] ?? '"excluded"';
+
+            if (strtolower($alias) !== '"excluded"') {
+                throw new InvalidArgumentException('Postgres alias is always named "excluded". A custom alias cannot be used.');
+            }
+
+            $updateFields = $this->QBOptions['updateFields'] ?? $this->updateFields($keys, false, $constraints)->QBOptions['updateFields'] ?? [];
+
+            $sql = 'INSERT INTO ' . $table . ' (';
+
+            $sql .= implode(', ', $keys);
+
+            $sql .= ")\n";
+
+            $sql .= '{:_table_:}';
+
+            $sql .= 'ON CONFLICT(' . implode(',', $constraints) . ")\n";
+
+            $sql .= "DO UPDATE SET\n";
+
+            $sql .= implode(
+                ",\n",
+                array_map(
+                    static fn ($key, $value): string => $key . ($value instanceof RawSql ?
+                    " = {$value}" :
+                    " = {$alias}.{$value}"),
+                    array_keys($updateFields),
+                    $updateFields,
+                ),
+            );
+
+            $this->QBOptions['sql'] = $sql;
+        }
+
+        if (isset($this->QBOptions['setQueryAsData'])) {
+            $data = $this->QBOptions['setQueryAsData'];
+        } else {
+            $data = 'VALUES ' . implode(', ', $this->formatValues($values)) . "\n";
+        }
+
+        return str_replace('{:_table_:}', $data, $sql);
+    }
+
+    /**
+     * Generates a platform-specific batch update string from the supplied data
+     */
+    protected function _deleteBatch(string $table, array $keys, array $values): string
+    {
+        $sql = $this->QBOptions['sql'] ?? '';
+
+        // if this is the first iteration of batch then we need to build skeleton sql
+        if ($sql === '') {
+            $constraints = $this->QBOptions['constraints'] ?? [];
+
+            if ($constraints === []) {
+                if ($this->db->DBDebug) {
+                    throw new DatabaseException('You must specify a constraint to match on for batch deletes.'); // @codeCoverageIgnore
+                }
+
+                return ''; // @codeCoverageIgnore
+            }
+
+            $alias = $this->QBOptions['alias'] ?? '_u';
+
+            $sql = 'DELETE FROM ' . $table . "\n";
+
+            $sql .= "USING (\n{:_table_:}";
+
+            $sql .= ') ' . $alias . "\n";
+
+            $that = $this;
+            $sql .= 'WHERE ' . implode(
+                ' AND ',
+                array_map(
+                    static function ($key, $value) use ($table, $alias, $that): RawSql|string {
+                        if ($value instanceof RawSql) {
+                            return $value;
+                        }
+
+                        if (is_string($key)) {
+                            return $table . '.' . $key . ' = '
+                                . $that->cast(
+                                    $alias . '.' . $value,
+                                    $that->getFieldType($table, $key),
+                                );
+                        }
+
+                        return $table . '.' . $value . ' = ' . $alias . '.' . $value;
+                    },
+                    array_keys($constraints),
+                    $constraints,
+                ),
+            );
+
+            $sql .= ' ' . str_replace(
+                'WHERE ',
+                'AND ',
+                $this->compileWhereHaving('QBWhere'),
+            );
+
+            $this->QBOptions['sql'] = $sql;
+        }
+
+        if (isset($this->QBOptions['setQueryAsData'])) {
+            $data = $this->QBOptions['setQueryAsData'];
+        } else {
+            $constraints = $this->QBOptions['constraints'] ?? [];
+
+            $data = implode(
+                " UNION ALL\n",
+                array_map(
+                    fn (array $value): string => sprintf('SELECT %s', implode(', ', array_map(
+                        fn (string $key, float|int|string $index): string => sprintf(
+                            '%s %s',
+                            $this->castValue((string) $index, $this->getSourceType($table, $key, $constraints)),
+                            $key,
+                        ),
+                        $keys,
+                        $value,
+                    ))),
+                    $values,
+                ),
+            ) . "\n";
+        }
+
+        return $this->compileBatchBinds(str_replace('{:_table_:}', $data, $sql));
     }
 }

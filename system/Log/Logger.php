@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,10 +13,12 @@
 
 namespace CodeIgniter\Log;
 
+use CodeIgniter\Entity\Entity;
+use CodeIgniter\Exceptions\RuntimeException;
 use CodeIgniter\Log\Exceptions\LogException;
 use CodeIgniter\Log\Handlers\HandlerInterface;
 use Psr\Log\LoggerInterface;
-use RuntimeException;
+use Stringable;
 use Throwable;
 
 /**
@@ -35,7 +39,7 @@ class Logger implements LoggerInterface
      * Used by the logThreshold Config setting to define
      * which errors to show.
      *
-     * @var array<string, integer>
+     * @var array<string, int>
      */
     protected $logLevels = [
         'emergency' => 1,
@@ -49,11 +53,11 @@ class Logger implements LoggerInterface
     ];
 
     /**
-     * Array of levels to be logged.
-     * The rest will be ignored.
-     * Set in Config/logger.php
+     * Array of levels to be logged. The rest will be ignored.
      *
-     * @var array
+     * Set in app/Config/Logger.php
+     *
+     * @var list<string>
      */
     protected $loggableLevels = [];
 
@@ -81,7 +85,7 @@ class Logger implements LoggerInterface
     /**
      * Caches instances of the handlers.
      *
-     * @var array
+     * @var array<class-string<HandlerInterface>, HandlerInterface>
      */
     protected $handlers = [];
 
@@ -91,14 +95,14 @@ class Logger implements LoggerInterface
      * value is an associative array of configuration
      * items.
      *
-     * @var array
+     * @var array<class-string<HandlerInterface>, array<string, int|list<string>|string>>
      */
     protected $handlerConfig = [];
 
     /**
      * Caches logging calls for debugbar.
      *
-     * @var array
+     * @var list<array{level: string, msg: string}>
      */
     public $logCache;
 
@@ -118,32 +122,32 @@ class Logger implements LoggerInterface
      */
     public function __construct($config, bool $debug = CI_DEBUG)
     {
-        $this->loggableLevels = is_array($config->threshold) ? $config->threshold : range(1, (int) $config->threshold);
+        $loggableLevels = is_array($config->threshold) ? $config->threshold : range(1, (int) $config->threshold);
 
         // Now convert loggable levels to strings.
         // We only use numbers to make the threshold setting convenient for users.
-        if ($this->loggableLevels) {
-            $temp = [];
+        foreach ($loggableLevels as $level) {
+            /** @var false|string $stringLevel */
+            $stringLevel = array_search($level, $this->logLevels, true);
 
-            foreach ($this->loggableLevels as $level) {
-                $temp[] = array_search((int) $level, $this->logLevels, true);
+            if ($stringLevel === false) {
+                continue;
             }
 
-            $this->loggableLevels = $temp;
-            unset($temp);
+            $this->loggableLevels[] = $stringLevel;
         }
 
-        $this->dateFormat = $config->dateFormat ?? $this->dateFormat;
+        $this->dateFormat = $config->dateFormat;
 
-        if (! is_array($config->handlers) || empty($config->handlers)) {
+        if ($config->handlers === []) {
             throw LogException::forNoHandlers('LoggerConfig');
         }
 
         // Save the handler configuration for later.
         // Instances will be created on demand.
         $this->handlerConfig = $config->handlers;
+        $this->cacheLogs     = $debug;
 
-        $this->cacheLogs = $debug;
         if ($this->cacheLogs) {
             $this->logCache = [];
         }
@@ -151,12 +155,10 @@ class Logger implements LoggerInterface
 
     /**
      * System is unusable.
-     *
-     * @param string $message
      */
-    public function emergency($message, array $context = []): bool
+    public function emergency(string|Stringable $message, array $context = []): void
     {
-        return $this->log('emergency', $message, $context);
+        $this->log('emergency', $message, $context);
     }
 
     /**
@@ -164,35 +166,29 @@ class Logger implements LoggerInterface
      *
      * Example: Entire website down, database unavailable, etc. This should
      * trigger the SMS alerts and wake you up.
-     *
-     * @param string $message
      */
-    public function alert($message, array $context = []): bool
+    public function alert(string|Stringable $message, array $context = []): void
     {
-        return $this->log('alert', $message, $context);
+        $this->log('alert', $message, $context);
     }
 
     /**
      * Critical conditions.
      *
      * Example: Application component unavailable, unexpected exception.
-     *
-     * @param string $message
      */
-    public function critical($message, array $context = []): bool
+    public function critical(string|Stringable $message, array $context = []): void
     {
-        return $this->log('critical', $message, $context);
+        $this->log('critical', $message, $context);
     }
 
     /**
      * Runtime errors that do not require immediate action but should typically
      * be logged and monitored.
-     *
-     * @param string $message
      */
-    public function error($message, array $context = []): bool
+    public function error(string|Stringable $message, array $context = []): void
     {
-        return $this->log('error', $message, $context);
+        $this->log('error', $message, $context);
     }
 
     /**
@@ -200,80 +196,61 @@ class Logger implements LoggerInterface
      *
      * Example: Use of deprecated APIs, poor use of an API, undesirable things
      * that are not necessarily wrong.
-     *
-     * @param string $message
      */
-    public function warning($message, array $context = []): bool
+    public function warning(string|Stringable $message, array $context = []): void
     {
-        return $this->log('warning', $message, $context);
+        $this->log('warning', $message, $context);
     }
 
     /**
      * Normal but significant events.
-     *
-     * @param string $message
      */
-    public function notice($message, array $context = []): bool
+    public function notice(string|Stringable $message, array $context = []): void
     {
-        return $this->log('notice', $message, $context);
+        $this->log('notice', $message, $context);
     }
 
     /**
      * Interesting events.
      *
      * Example: User logs in, SQL logs.
-     *
-     * @param string $message
      */
-    public function info($message, array $context = []): bool
+    public function info(string|Stringable $message, array $context = []): void
     {
-        return $this->log('info', $message, $context);
+        $this->log('info', $message, $context);
     }
 
     /**
      * Detailed debug information.
-     *
-     * @param string $message
      */
-    public function debug($message, array $context = []): bool
+    public function debug(string|Stringable $message, array $context = []): void
     {
-        return $this->log('debug', $message, $context);
+        $this->log('debug', $message, $context);
     }
 
     /**
      * Logs with an arbitrary level.
      *
-     * @param mixed  $level
-     * @param string $message
+     * @param mixed $level
      */
-    public function log($level, $message, array $context = []): bool
+    public function log($level, string|Stringable $message, array $context = []): void
     {
         if (is_numeric($level)) {
             $level = array_search((int) $level, $this->logLevels, true);
         }
 
-        // Is the level a valid level?
         if (! array_key_exists($level, $this->logLevels)) {
             throw LogException::forInvalidLogLevel($level);
         }
 
-        // Does the app want to log this right now?
         if (! in_array($level, $this->loggableLevels, true)) {
-            return false;
+            return;
         }
 
-        // Parse our placeholders
         $message = $this->interpolate($message, $context);
 
-        if (! is_string($message)) {
-            $message = print_r($message, true);
-        }
-
         if ($this->cacheLogs) {
-            $this->logCache[] = [
-                'level' => $level,
-                'msg'   => $message,
-            ];
+            $this->logCache[] = ['level' => $level, 'msg' => $message];
         }
 
         foreach ($this->handlerConfig as $className => $config) {
@@ -281,23 +258,17 @@ class Logger implements LoggerInterface
                 $this->handlers[$className] = new $className($config);
             }
 
-            /**
-             * @var HandlerInterface $handler
-             */
             $handler = $this->handlers[$className];
 
             if (! $handler->canHandle($level)) {
                 continue;
             }
 
-            // If the handler returns false, then we
-            // don't execute any other handlers.
+            // If the handler returns false, then we don't execute any other handlers.
             if (! $handler->setDateFormat($this->dateFormat)->handle($level, $message)) {
                 break;
             }
         }
-
-        return true;
     }
 
     /**
@@ -312,37 +283,36 @@ class Logger implements LoggerInterface
      * {file}
      * {line}
      *
-     * @param mixed $message
+     * @param string|Stringable    $message
+     * @param array<string, mixed> $context
      *
-     * @return mixed
+     * @return string
      */
     protected function interpolate($message, array $context = [])
     {
         if (! is_string($message)) {
-            return $message;
+            return print_r($message, true);
         }
 
-        // build a replacement array with braces around the context keys
         $replace = [];
 
         foreach ($context as $key => $val) {
-            // Verify that the 'exception' key is actually an exception
-            // or error, both of which implement the 'Throwable' interface.
-            if ($key === 'exception' && $val instanceof Throwable) {
-                $val = $val->getMessage() . ' ' . $this->cleanFileNames($val->getFile()) . ':' . $val->getLine();
+            $placeholder = '{' . $key . '}';
+
+            if (! str_contains($message, $placeholder)) {
+                continue;
             }
 
             // todo - sanitize input before writing to file?
-            $replace['{' . $key . '}'] = $val;
+            $replace[$placeholder] = $this->stringifyContextValue($key, $val);
         }
 
-        // Add special placeholders
-        $replace['{post_vars}'] = '$_POST: ' . print_r($_POST, true);
-        $replace['{get_vars}']  = '$_GET: ' . print_r($_GET, true);
+        $replace['{post_vars}'] = '$_POST: ' . print_r(service('superglobals')->getPostArray(), true);
+        $replace['{get_vars}']  = '$_GET: ' . print_r(service('superglobals')->getGetArray(), true);
         $replace['{env}']       = ENVIRONMENT;
 
         // Allow us to log the file/line that we are logging from
-        if (strpos($message, '{file}') !== false) {
+        if (str_contains($message, '{file}') || str_contains($message, '{line}')) {
             [$file, $line] = $this->determineFile();
 
             $replace['{file}'] = $file;
@@ -350,14 +320,12 @@ class Logger implements LoggerInterface
         }
 
         // Match up environment variables in {env:foo} tags.
-        if (strpos($message, 'env:') !== false) {
+        if (str_contains($message, 'env:')) {
             preg_match('/env:[^}]+/', $message, $matches);
 
-            if ($matches) {
-                foreach ($matches as $str) {
-                    $key                 = str_replace('env:', '', $str);
-                    $replace["{{$str}}"] = $_ENV[$key] ?? 'n/a';
-                }
+            foreach ($matches as $str) {
+                $key                 = str_replace('env:', '', $str);
+                $replace["{{$str}}"] = $_ENV[$key] ?? 'n/a';
             }
         }
 
@@ -365,14 +333,57 @@ class Logger implements LoggerInterface
             $replace['{session_vars}'] = '$_SESSION: ' . print_r($_SESSION, true);
         }
 
-        // interpolate replacement values into the message and return
         return strtr($message, $replace);
+    }
+
+    /**
+     * Converts context values to strings without raising PHP errors.
+     */
+    protected function stringifyContextValue(int|string $key, mixed $value): string
+    {
+        // Verify that the 'exception' key is actually an exception
+        // or error, both of which implement the 'Throwable' interface.
+        if ($key === 'exception' && $value instanceof Throwable) {
+            return $value->getMessage() . ' ' . clean_path($value->getFile()) . ':' . $value->getLine();
+        }
+
+        if ($value === null || is_scalar($value)) {
+            return (string) $value;
+        }
+
+        if ($value instanceof Stringable) {
+            try {
+                return (string) $value;
+            } catch (Throwable) {
+                return '[object ' . $value::class . ']';
+            }
+        }
+
+        if (is_array($value)) {
+            return print_r($value, true);
+        }
+
+        if ($value instanceof Entity) {
+            try {
+                return print_r($value->toArray(), true);
+            } catch (Throwable) {
+                return '[object ' . $value::class . ']';
+            }
+        }
+
+        if (is_object($value)) {
+            return '[object ' . $value::class . ']';
+        }
+
+        return '[' . get_debug_type($value) . ']';
     }
 
     /**
      * Determines the file and line that the logging call
      * was made from by analyzing the backtrace.
      * Find the earliest stack frame that is part of our logging system.
+     *
+     * @return array{string, int|string}
      */
     public function determineFile(): array
     {
@@ -389,44 +400,19 @@ class Logger implements LoggerInterface
             'notice',
         ];
 
-        // Generate Backtrace info
-        $trace = \debug_backtrace(0);
+        $trace = debug_backtrace(0);
 
-        // So we search from the bottom (earliest) of the stack frames
-        $stackFrames = \array_reverse($trace);
+        $stackFrames = array_reverse($trace);
 
-        // Find the first reference to a Logger class method
         foreach ($stackFrames as $frame) {
-            if (\in_array($frame['function'], $logFunctions, true)) {
-                $file = isset($frame['file']) ? $this->cleanFileNames($frame['file']) : 'unknown';
+            if (in_array($frame['function'], $logFunctions, true)) {
+                $file = isset($frame['file']) ? clean_path($frame['file']) : 'unknown';
                 $line = $frame['line'] ?? 'unknown';
 
-                return [
-                    $file,
-                    $line,
-                ];
+                return [$file, $line];
             }
         }
 
-        return [
-            'unknown',
-            'unknown',
-        ];
-    }
-
-    /**
-     * Cleans the paths of filenames by replacing APPPATH, SYSTEMPATH, FCPATH
-     * with the actual var. i.e.
-     *
-     *  /var/www/site/app/Controllers/Home.php
-     *      becomes:
-     *  APPPATH/Controllers/Home.php
-     */
-    protected function cleanFileNames(string $file): string
-    {
-        $file = str_replace(APPPATH, 'APPPATH/', $file);
-        $file = str_replace(SYSTEMPATH, 'SYSTEMPATH/', $file);
-
-        return str_replace(FCPATH, 'FCPATH/', $file);
+        return ['unknown', 'unknown'];
     }
 }

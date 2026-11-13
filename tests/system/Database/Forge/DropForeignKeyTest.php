@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -15,10 +17,12 @@ use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\Database\Forge;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\Mock\MockConnection;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class DropForeignKeyTest extends CIUnitTestCase
 {
     protected $db;
@@ -29,7 +33,7 @@ final class DropForeignKeyTest extends CIUnitTestCase
         $this->db = new MockConnection([]);
     }
 
-    public function testDropForeignKeyWithEmptyDropConstraintStrProperty()
+    public function testDropForeignKeyWithEmptyDropConstraintStrProperty(): void
     {
         $this->setPrivateProperty($this->db, 'DBDebug', true);
 

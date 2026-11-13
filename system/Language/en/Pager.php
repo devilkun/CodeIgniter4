@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -18,6 +20,6 @@ return [
     'last'                   => 'Last',
     'older'                  => 'Older',
     'newer'                  => 'Newer',
-    'invalidTemplate'        => '{0} is not a valid Pager template.',
-    'invalidPaginationGroup' => '{0} is not a valid Pagination group.',
+    'invalidTemplate'        => '"{0}" is not a valid Pager template.',
+    'invalidPaginationGroup' => '"{0}" is not a valid Pagination group.',
 ];

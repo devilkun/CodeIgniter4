@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,32 +13,23 @@
 
 namespace CodeIgniter\Cache\Handlers;
 
+use CodeIgniter\Cache\CacheFactory;
+use CodeIgniter\Cache\Exceptions\CacheException;
 use CodeIgniter\CLI\CLI;
-use CodeIgniter\Test\CIUnitTestCase;
+use CodeIgniter\I18n\Time;
 use Config\Cache;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RequiresOperatingSystem;
 
 /**
  * @internal
  */
-final class FileHandlerTest extends CIUnitTestCase
+#[Group('Others')]
+final class FileHandlerTest extends AbstractHandlerTestCase
 {
-    private static $directory = 'FileHandler';
-    private static $key1      = 'key1';
-    private static $key2      = 'key2';
-    private static $key3      = 'key3';
-
-    private static function getKeyArray()
-    {
-        return [
-            self::$key1,
-            self::$key2,
-            self::$key3,
-        ];
-    }
-
-    private static $dummy = 'dymmy';
-    private $fileHandler;
-    private $config;
+    private static string $directory = 'FileHandler';
+    private Cache $config;
 
     protected function setUp(): void
     {
@@ -54,8 +47,7 @@ final class FileHandlerTest extends CIUnitTestCase
             mkdir($this->config->file['storePath'], 0777, true);
         }
 
-        $this->fileHandler = new FileHandler($this->config);
-        $this->fileHandler->initialize();
+        $this->handler = CacheFactory::getHandler($this->config, 'file');
     }
 
     protected function tearDown(): void
@@ -65,40 +57,38 @@ final class FileHandlerTest extends CIUnitTestCase
         if (is_dir($this->config->file['storePath'])) {
             chmod($this->config->file['storePath'], 0777);
 
-            foreach (self::getKeyArray() as $key) {
-                if (is_file($this->config->file['storePath'] . DIRECTORY_SEPARATOR . $key)) {
-                    chmod($this->config->file['storePath'] . DIRECTORY_SEPARATOR . $key, 0777);
-                    unlink($this->config->file['storePath'] . DIRECTORY_SEPARATOR . $key);
-                }
+            if (isset($this->handler)) {
+                $this->handler->clean();
             }
 
             rmdir($this->config->file['storePath']);
         }
     }
 
-    public function testNew()
+    public function testNew(): void
     {
-        $this->assertInstanceOf(FileHandler::class, $this->fileHandler);
+        $this->assertInstanceOf(FileHandler::class, $this->handler);
     }
 
-    public function testNewWithNonWritablePath()
+    /**
+     * chmod('path', 0444) does not work on Windows
+     */
+    #[RequiresOperatingSystem('Linux|Darwin')]
+    public function testNewWithNonWritablePath(): void
     {
-        $this->expectException('CodeIgniter\Cache\Exceptions\CacheException');
+        $this->expectException(CacheException::class);
 
         chmod($this->config->file['storePath'], 0444);
-        new FileHandler($this->config);
+        CacheFactory::getHandler($this->config, 'file');
     }
 
-    public function testSetDefaultPath()
+    public function testSetDefaultPath(): void
     {
         // Initialize path
-        $config                    = new Cache();
-        $config->file['storePath'] = null;
+        $config = new Cache();
+        unset($config->file['storePath']);
 
-        $this->fileHandler = new FileHandler($config);
-        $this->fileHandler->initialize();
-
-        $this->assertInstanceOf(FileHandler::class, $this->fileHandler);
+        $this->assertInstanceOf(FileHandler::class, CacheFactory::getHandler($config, 'file'));
     }
 
     /**
@@ -107,15 +97,15 @@ final class FileHandlerTest extends CIUnitTestCase
      *
      * @timeLimit 3.5
      */
-    public function testGet()
+    public function testGet(): void
     {
-        $this->fileHandler->save(self::$key1, 'value', 2);
+        $this->assertTrue($this->handler->save(self::$key1, 'value', 2));
 
-        $this->assertSame('value', $this->fileHandler->get(self::$key1));
-        $this->assertNull($this->fileHandler->get(self::$dummy));
+        $this->assertSame('value', $this->handler->get(self::$key1));
+        $this->assertNull($this->handler->get(self::$dummy));
 
         CLI::wait(3);
-        $this->assertNull($this->fileHandler->get(self::$key1));
+        $this->assertNull($this->handler->get(self::$key1));
     }
 
     /**
@@ -124,213 +114,349 @@ final class FileHandlerTest extends CIUnitTestCase
      *
      * @timeLimit 3.5
      */
-    public function testRemember()
+    public function testRemember(): void
     {
-        $this->fileHandler->remember(self::$key1, 2, static function () {
-            return 'value';
-        });
+        $this->handler->remember(self::$key1, 2, static fn (): string => 'value');
 
-        $this->assertSame('value', $this->fileHandler->get(self::$key1));
-        $this->assertNull($this->fileHandler->get(self::$dummy));
+        $this->assertSame('value', $this->handler->get(self::$key1));
+        $this->assertNull($this->handler->get(self::$dummy));
 
         CLI::wait(3);
-        $this->assertNull($this->fileHandler->get(self::$key1));
+        $this->assertNull($this->handler->get(self::$key1));
     }
 
-    public function testSave()
+    /**
+     * chmod('path', 0444) does not work on Windows
+     */
+    #[RequiresOperatingSystem('Linux|Darwin')]
+    public function testSave(): void
     {
-        $this->assertTrue($this->fileHandler->save(self::$key1, 'value'));
+        $this->assertTrue($this->handler->save(self::$key1, 'value'));
 
         chmod($this->config->file['storePath'], 0444);
-        $this->assertFalse($this->fileHandler->save(self::$key2, 'value'));
+        $this->assertFalse($this->handler->save(self::$key2, 'value'));
     }
 
-    public function testSaveExcessiveKeyLength()
+    public function testSaveExcessiveKeyLength(): void
     {
         $key  = str_repeat('a', 260);
         $file = $this->config->file['storePath'] . DIRECTORY_SEPARATOR . md5($key);
 
-        $this->assertTrue($this->fileHandler->save($key, 'value'));
+        $this->assertTrue($this->handler->save($key, 'value'));
         $this->assertFileExists($file);
 
         unlink($file);
     }
 
-    public function testSavePermanent()
+    public function testSavePermanent(): void
     {
-        $this->assertTrue($this->fileHandler->save(self::$key1, 'value', 0));
-        $metaData = $this->fileHandler->getMetaData(self::$key1);
+        $this->assertTrue($this->handler->save(self::$key1, 'value', 0));
+        $metaData = $this->handler->getMetaData(self::$key1);
 
         $this->assertNull($metaData['expire']);
-        $this->assertLessThanOrEqual(1, $metaData['mtime'] - time());
+        $this->assertLessThanOrEqual(1, $metaData['mtime'] - Time::now()->getTimestamp());
         $this->assertSame('value', $metaData['data']);
 
-        $this->assertTrue($this->fileHandler->delete(self::$key1));
+        $this->assertTrue($this->handler->delete(self::$key1));
     }
 
-    public function testDelete()
+    public function testDelete(): void
     {
-        $this->fileHandler->save(self::$key1, 'value');
+        $this->handler->save(self::$key1, 'value');
 
-        $this->assertTrue($this->fileHandler->delete(self::$key1));
-        $this->assertFalse($this->fileHandler->delete(self::$dummy));
+        $this->assertTrue($this->handler->delete(self::$key1));
+        $this->assertFalse($this->handler->delete(self::$dummy));
     }
 
-    public function testDeleteMatchingPrefix()
+    public function testDeleteMatchingPrefix(): void
     {
         // Save 101 items to match on
         for ($i = 1; $i <= 101; $i++) {
-            $this->fileHandler->save('key_' . $i, 'value' . $i);
+            $this->handler->save('key_' . $i, 'value' . $i);
         }
 
         // check that there are 101 items is cache store
-        $this->assertCount(101, $this->fileHandler->getCacheInfo());
+        $this->assertCount(101, $this->handler->getCacheInfo());
 
         // Checking that given the prefix "key_1", deleteMatching deletes 13 keys:
         // (key_1, key_10, key_11, key_12, key_13, key_14, key_15, key_16, key_17, key_18, key_19, key_100, key_101)
-        $this->assertSame(13, $this->fileHandler->deleteMatching('key_1*'));
+        $this->assertSame(13, $this->handler->deleteMatching('key_1*'));
 
         // check that there remains (101 - 13) = 88 items is cache store
-        $this->assertCount(88, $this->fileHandler->getCacheInfo());
+        $this->assertCount(88, $this->handler->getCacheInfo());
 
         // Clear all files
-        $this->fileHandler->clean();
+        $this->handler->clean();
     }
 
-    public function testDeleteMatchingSuffix()
+    public function testDeleteMatchingSuffix(): void
     {
         // Save 101 items to match on
         for ($i = 1; $i <= 101; $i++) {
-            $this->fileHandler->save('key_' . $i, 'value' . $i);
+            $this->handler->save('key_' . $i, 'value' . $i);
         }
 
         // check that there are 101 items is cache store
-        $this->assertCount(101, $this->fileHandler->getCacheInfo());
+        $this->assertCount(101, $this->handler->getCacheInfo());
 
         // Checking that given the suffix "1", deleteMatching deletes 11 keys:
         // (key_1, key_11, key_21, key_31, key_41, key_51, key_61, key_71, key_81, key_91, key_101)
-        $this->assertSame(11, $this->fileHandler->deleteMatching('*1'));
+        $this->assertSame(11, $this->handler->deleteMatching('*1'));
 
         // check that there remains (101 - 13) = 88 items is cache store
-        $this->assertCount(90, $this->fileHandler->getCacheInfo());
+        $this->assertCount(90, $this->handler->getCacheInfo());
 
         // Clear all files
-        $this->fileHandler->clean();
+        $this->handler->clean();
     }
 
-    public function testIncrement()
+    /**
+     * @param string $pattern "{victim}" is replaced with the name of a file in the parent of the cache directory
+     */
+    #[DataProvider('provideDeleteMatchingDoesNotDeleteFilesOutsideCacheDirectory')]
+    public function testDeleteMatchingDoesNotDeleteFilesOutsideCacheDirectory(string $pattern): void
     {
-        $this->fileHandler->save(self::$key1, 1);
-        $this->fileHandler->save(self::$key2, 'value');
+        $parent = realpath(dirname($this->config->file['storePath']));
+        $this->assertNotFalse($parent);
 
-        $this->assertSame(11, $this->fileHandler->increment(self::$key1, 10));
-        $this->assertFalse($this->fileHandler->increment(self::$key2, 10));
-        $this->assertSame(10, $this->fileHandler->increment(self::$key3, 10));
+        $victim = tempnam($parent, 'deleteMatchingVictim');
+        $this->assertNotFalse($victim);
+
+        try {
+            // tempnam() falls back to the system temp directory on failure.
+            $this->assertSame($parent, realpath(dirname($victim)));
+
+            $this->assertTrue($this->handler->save(self::$key1, 'value'));
+
+            $pattern = str_replace('{victim}', basename($victim), $pattern);
+
+            $this->assertSame(0, $this->handler->deleteMatching($pattern));
+            $this->assertFileExists($victim);
+            $this->assertSame('value', $this->handler->get(self::$key1));
+        } finally {
+            if (is_file($victim)) {
+                unlink($victim);
+            }
+        }
     }
 
-    public function testDecrement()
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function provideDeleteMatchingDoesNotDeleteFilesOutsideCacheDirectory(): iterable
     {
-        $this->fileHandler->save(self::$key1, 10);
-        $this->fileHandler->save(self::$key2, 'value');
+        yield 'parent directory' => ['../{victim}'];
+
+        yield 'parent directory with wildcard' => ['../{victim}*'];
+
+        yield 'parent directory with backslash' => ['..\\{victim}'];
+
+        yield 'parent directory only' => ['..'];
+    }
+
+    public function testDeleteMatchingDoesNotDeleteFilesInSubdirectories(): void
+    {
+        $directoryName = 'dir_' . bin2hex(random_bytes(8));
+        $subdirectory  = $this->config->file['storePath'] . '/' . $directoryName . '/';
+
+        $this->assertTrue(mkdir($subdirectory));
+
+        try {
+            $this->assertNotFalse(file_put_contents($subdirectory . 'key_1', 'data'));
+
+            $this->assertSame(0, $this->handler->deleteMatching($directoryName . '/key_*'));
+            $this->assertFileExists($subdirectory . 'key_1');
+        } finally {
+            if (is_file($subdirectory . 'key_1')) {
+                unlink($subdirectory . 'key_1');
+            }
+
+            rmdir($subdirectory);
+        }
+    }
+
+    #[RequiresOperatingSystem('Linux|Darwin')]
+    public function testDeleteMatchingSupportsEscapedWildcards(): void
+    {
+        $this->assertTrue($this->handler->save('key*1', 'value'));
+        $this->assertTrue($this->handler->save('key_1', 'value'));
+
+        $this->assertSame(1, $this->handler->deleteMatching('key\*1'));
+        $this->assertNull($this->handler->get('key*1'));
+        $this->assertSame('value', $this->handler->get('key_1'));
+    }
+
+    public function testDeleteMatchingTreatsCachePathLiterally(): void
+    {
+        // As a glob pattern, "cache[1]" would match the sibling "cache1" instead of itself.
+        $cachePath   = $this->config->file['storePath'] . '/cache[1]/';
+        $siblingPath = $this->config->file['storePath'] . '/cache1/';
+
+        $this->assertTrue(mkdir($cachePath));
+        $this->assertTrue(mkdir($siblingPath));
+
+        try {
+            $this->assertNotFalse(file_put_contents($siblingPath . 'key_1', 'data'));
+
+            $config                    = new Cache();
+            $config->file['storePath'] = $cachePath;
+            $handler                   = CacheFactory::getHandler($config, 'file');
+
+            $this->assertTrue($handler->save('key_1', 'value'));
+
+            $this->assertSame(1, $handler->deleteMatching('*'));
+            $this->assertNull($handler->get('key_1'));
+            $this->assertFileExists($siblingPath . 'key_1');
+        } finally {
+            foreach ([$cachePath, $siblingPath] as $path) {
+                if (is_file($path . 'key_1')) {
+                    unlink($path . 'key_1');
+                }
+
+                rmdir($path);
+            }
+        }
+    }
+
+    public function testDeleteMatchingWildcardDoesNotMatchHiddenFiles(): void
+    {
+        $hidden = $this->config->file['storePath'] . '/.hidden';
+
+        $this->assertNotFalse(file_put_contents($hidden, 'data'));
+
+        try {
+            $this->assertTrue($this->handler->save(self::$key1, 'value'));
+
+            $this->assertSame(1, $this->handler->deleteMatching('*'));
+            $this->assertFileExists($hidden);
+        } finally {
+            if (is_file($hidden)) {
+                unlink($hidden);
+            }
+        }
+    }
+
+    public function testIncrement(): void
+    {
+        $this->handler->save(self::$key1, 1);
+        $this->handler->save(self::$key2, 'value');
+
+        $this->assertSame(11, $this->handler->increment(self::$key1, 10));
+        $this->assertFalse($this->handler->increment(self::$key2, 10));
+        $this->assertSame(10, $this->handler->increment(self::$key3, 10));
+    }
+
+    public function testIncrementWithDefaultPrefix(): void
+    {
+        $this->config->prefix = 'test_';
+
+        $this->handler = CacheFactory::getHandler($this->config, 'file');
+        $this->handler->save(self::$key1, 1);
+        $this->handler->save(self::$key2, 'value');
+
+        $this->assertSame(11, $this->handler->increment(self::$key1, 10));
+        $this->assertSame($this->handler->increment(self::$key1, 10), $this->handler->get(self::$key1));
+        $this->assertFalse($this->handler->increment(self::$key2, 10));
+        $this->assertSame(10, $this->handler->increment(self::$key3, 10));
+        $this->assertSame($this->handler->increment(self::$key3, 10), $this->handler->get(self::$key3));
+    }
+
+    public function testDecrement(): void
+    {
+        $this->handler->save(self::$key1, 10);
+        $this->handler->save(self::$key2, 'value');
 
         // Line following commented out to force the cache to add a zero entry for key3
         // $this->fileHandler->save(self::$key3, 0);
 
-        $this->assertSame(9, $this->fileHandler->decrement(self::$key1, 1));
-        $this->assertFalse($this->fileHandler->decrement(self::$key2, 1));
-        $this->assertSame(-1, $this->fileHandler->decrement(self::$key3, 1));
+        $this->assertSame(9, $this->handler->decrement(self::$key1, 1));
+        $this->assertFalse($this->handler->decrement(self::$key2, 1));
+        $this->assertSame(-1, $this->handler->decrement(self::$key3, 1));
     }
 
-    public function testClean()
+    public function testDecrementWithDefaultPrefix(): void
     {
-        $this->fileHandler->save(self::$key1, 1);
-        $this->fileHandler->save(self::$key2, 'value');
+        $this->handler->save(self::$key1, 10);
+        $this->handler->save(self::$key2, 'value');
 
-        $this->assertTrue($this->fileHandler->clean());
+        // Line following commented out to force the cache to add a zero entry for key3
+        // $this->fileHandler->save(self::$key3, 0);
 
-        $this->fileHandler->save(self::$key1, 1);
-        $this->fileHandler->save(self::$key2, 'value');
+        $this->assertSame(9, $this->handler->decrement(self::$key1, 1));
+        $this->assertSame($this->handler->decrement(self::$key1, 1), $this->handler->get(self::$key1));
+        $this->assertFalse($this->handler->decrement(self::$key2, 1));
+        $this->assertSame(-1, $this->handler->decrement(self::$key3, 1));
+        $this->assertSame($this->handler->decrement(self::$key3, 1), $this->handler->get(self::$key3));
     }
 
-    public function testGetMetaData()
+    public function testClean(): void
     {
-        $time = time();
-        $this->fileHandler->save(self::$key1, 'value');
+        $this->handler->save(self::$key1, 1);
+        $this->handler->save(self::$key2, 'value');
 
-        $this->assertFalse($this->fileHandler->getMetaData(self::$dummy));
+        $this->assertTrue($this->handler->clean());
 
-        $actual = $this->fileHandler->getMetaData(self::$key1);
-        $this->assertLessThanOrEqual(60, $actual['expire'] - $time);
-        $this->assertLessThanOrEqual(1, $actual['mtime'] - $time);
-        $this->assertSame('value', $actual['data']);
+        $this->handler->save(self::$key1, 1);
+        $this->handler->save(self::$key2, 'value');
     }
 
-    public function testGetCacheInfo()
+    public function testGetCacheInfo(): void
     {
-        $this->fileHandler->save(self::$key1, 'value');
+        $this->handler->save(self::$key1, 'value');
 
-        $actual = $this->fileHandler->getCacheInfo();
+        $actual = $this->handler->getCacheInfo();
         $this->assertArrayHasKey(self::$key1, $actual);
         $this->assertSame(self::$key1, $actual[self::$key1]['name']);
         $this->assertArrayHasKey('server_path', $actual[self::$key1]);
     }
 
-    public function testIsSupported()
+    public function testIsSupported(): void
     {
-        $this->assertTrue($this->fileHandler->isSupported());
+        $this->assertTrue($this->handler->isSupported());
     }
 
-    /**
-     * @dataProvider modeProvider
-     *
-     * @param mixed $int
-     * @param mixed $string
-     */
-    public function testSaveMode($int, $string)
+    #[DataProvider('provideSaveMode')]
+    #[RequiresOperatingSystem('Linux|Darwin')]
+    public function testSaveMode(int $int, string $string): void
     {
         // Initialize mode
-        $config               = new Cache();
-        $config->file['mode'] = $int;
+        $this->config->file['mode'] = $int;
 
-        $this->fileHandler = new FileHandler($config);
-        $this->fileHandler->initialize();
+        $this->handler = CacheFactory::getHandler($this->config, 'file');
+        $this->handler->save(self::$key1, 'value');
 
-        $this->fileHandler->save(self::$key1, 'value');
-
-        $file = $config->file['storePath'] . DIRECTORY_SEPARATOR . self::$key1;
+        $file = $this->config->file['storePath'] . DIRECTORY_SEPARATOR . self::$key1;
         $mode = octal_permissions(fileperms($file));
 
         $this->assertSame($string, $mode);
     }
 
-    public function modeProvider()
+    /**
+     * @return iterable<int, array{int, numeric-string}>
+     */
+    public static function provideSaveMode(): iterable
     {
         return [
-            [
-                0640,
-                '640',
-            ],
-            [
-                0600,
-                '600',
-            ],
-            [
-                0660,
-                '660',
-            ],
-            [
-                0777,
-                '777',
-            ],
+            [0640, '640'],
+            [0600, '600'],
+            [0660, '660'],
+            [0777, '777'],
         ];
     }
 
-    public function testFileHandler()
+    public function testFileHandler(): void
     {
-        $fileHandler = new BaseTestFileHandler();
+        $cache = new Cache();
+
+        $cache->validHandlers['file'] = BaseTestFileHandler::class;
+
+        /** @var BaseTestFileHandler $fileHandler */
+        $fileHandler = CacheFactory::getHandler($cache, 'file');
+        $this->assertInstanceOf(BaseTestFileHandler::class, $fileHandler);
 
         $actual = $fileHandler->getFileInfoTest();
-
+        $this->assertIsArray($actual);
+        $this->assertArrayHasKey('name', $actual);
         $this->assertArrayHasKey('server_path', $actual);
         $this->assertArrayHasKey('size', $actual);
         $this->assertArrayHasKey('date', $actual);
@@ -339,35 +465,43 @@ final class FileHandlerTest extends CIUnitTestCase
         $this->assertArrayHasKey('executable', $actual);
         $this->assertArrayHasKey('fileperms', $actual);
     }
-}
 
-final class BaseTestFileHandler extends FileHandler
-{
-    private static $directory = 'FileHandler';
-    private $config;
-
-    public function __construct()
+    public function testGetMetaDataMiss(): void
     {
-        $this->config = new Cache();
-        $this->config->file['storePath'] .= self::$directory;
-
-        parent::__construct($this->config);
+        $this->assertNull($this->handler->getMetaData(self::$dummy));
     }
 
-    public function getFileInfoTest()
+    #[RequiresOperatingSystem('Linux|Darwin')]
+    public function testGetUnreadableFile(): void
     {
-        $tmpHandle = tmpfile();
-        stream_get_meta_data($tmpHandle);
+        $this->handler->save(self::$key1, 'value');
 
-        return $this->getFileInfo(stream_get_meta_data($tmpHandle)['uri'], [
-            'name',
-            'server_path',
-            'size',
-            'date',
-            'readable',
-            'writable',
-            'executable',
-            'fileperms',
-        ]);
+        $filePath = $this->config->file['storePath'] . DIRECTORY_SEPARATOR . $this->config->prefix . self::$key1;
+
+        // Make the file unreadable
+        chmod($filePath, 0000);
+
+        $this->assertNull($this->handler->get(self::$key1));
+    }
+
+    public function testGetItemWithCorruptedData(): void
+    {
+        $filePath = $this->config->file['storePath'] . DIRECTORY_SEPARATOR . $this->config->prefix . self::$key1;
+
+        file_put_contents($filePath, 'corrupted_serialized_data_that_cannot_be_unserialized');
+
+        $this->assertFileExists($filePath);
+
+        $this->assertNull($this->handler->get(self::$key1));
+    }
+
+    public function testPing(): void
+    {
+        $this->assertTrue($this->handler->ping());
+    }
+
+    public function testReconnect(): void
+    {
+        $this->assertTrue($this->handler->reconnect());
     }
 }

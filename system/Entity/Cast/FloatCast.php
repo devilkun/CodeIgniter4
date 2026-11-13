@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,13 +14,10 @@
 namespace CodeIgniter\Entity\Cast;
 
 /**
- * Class FloatCast
+ * @extends BaseCast<float, mixed>
  */
 class FloatCast extends BaseCast
 {
-    /**
-     * {@inheritDoc}
-     */
     public static function get($value, array $params = []): float
     {
         return (float) $value;

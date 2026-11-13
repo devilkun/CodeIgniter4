@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -10,6 +12,8 @@
  */
 
 namespace CodeIgniter\Debug\Toolbar\Collectors;
+
+use DateTime;
 
 /**
  * History collector
@@ -49,17 +53,28 @@ class History extends BaseCollector
     protected $title = 'History';
 
     /**
-     * @var array History files
+     * @var list<array{
+     *   time: string,
+     *   datetime: string,
+     *   active: bool,
+     *   status: mixed,
+     *   method: mixed,
+     *   url: mixed,
+     *   isAJAX: string,
+     *   contentType: mixed
+     * }>
      */
     protected $files = [];
 
     /**
      * Specify time limit & file count for debug history.
      *
-     * @param int $current Current history time
-     * @param int $limit   Max history files
+     * @param string $current Current history time
+     * @param int    $limit   Max history files
+     *
+     * @return void
      */
-    public function setFiles(int $current, int $limit = 20)
+    public function setFiles(string $current, int $limit = 20)
     {
         $filenames = glob(WRITEPATH . 'debugbar/debugbar_*.json');
 
@@ -81,13 +96,13 @@ class History extends BaseCollector
 
             $contents = @json_decode($contents);
             if (json_last_error() === JSON_ERROR_NONE) {
-                preg_match_all('/\d+/', $filename, $time);
-                $time = (int) end($time[0]);
+                preg_match('/debugbar_(.*)\.json$/s', $filename, $time);
+                $time = sprintf('%.6F', $time[1] ?? 0);
 
                 // Debugbar files shown in History Collector
                 $files[] = [
                     'time'        => $time,
-                    'datetime'    => date('Y-m-d H:i:s', $time),
+                    'datetime'    => DateTime::createFromFormat('U.u', $time)->format('Y-m-d H:i:s.u'),
                     'active'      => $time === $current,
                     'status'      => $contents->vars->response->statusCode,
                     'method'      => $contents->method,
@@ -103,6 +118,17 @@ class History extends BaseCollector
 
     /**
      * Returns the data of this collector to be formatted in the toolbar
+     *
+     * @return array{files: list<array{
+     *   time: string,
+     *   datetime: string,
+     *   active: bool,
+     *   status: mixed,
+     *   method: mixed,
+     *   url: mixed,
+     *   isAJAX: string,
+     *   contentType: mixed
+     * }>}
      */
     public function display(): array
     {
@@ -122,7 +148,7 @@ class History extends BaseCollector
      */
     public function isEmpty(): bool
     {
-        return empty($this->files);
+        return $this->files === [];
     }
 
     /**

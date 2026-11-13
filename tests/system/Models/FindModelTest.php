@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,19 +15,43 @@ namespace CodeIgniter\Models;
 
 use CodeIgniter\Database\Exceptions\DataException;
 use CodeIgniter\Exceptions\ModelException;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+use stdClass;
+use Tests\Support\Entity\UserWithCasts;
 use Tests\Support\Models\JobModel;
 use Tests\Support\Models\SecondaryModel;
+use Tests\Support\Models\UserEntityWithCastsModel;
 use Tests\Support\Models\UserModel;
 
 /**
  * @internal
  */
+#[Group('DatabaseLive')]
 final class FindModelTest extends LiveModelTestCase
 {
     public function testFindReturnsRow(): void
     {
         $this->createModel(JobModel::class);
         $this->assertSame('Musician', $this->model->find(4)->name);
+    }
+
+    public function testFindReturnsEntityWithCasts(): void
+    {
+        $this->createModel(UserEntityWithCastsModel::class);
+        $this->model->builder()->truncate();
+        $user = new UserWithCasts([
+            'name'    => 'John Smith',
+            'email'   => ['foo@example.jp', 'bar@example.com'],
+            'country' => 'US',
+        ]);
+        $id = $this->model->insert($user, true);
+
+        /** @var UserWithCasts $user */
+        $user = $this->model->find($id);
+
+        $this->assertSame('John Smith', $user->name);
+        $this->assertSame(['foo@example.jp', 'bar@example.com'], $user->email);
     }
 
     public function testFindReturnsMultipleRows(): void
@@ -90,7 +116,7 @@ final class FindModelTest extends LiveModelTestCase
         $this->createModel(UserModel::class);
 
         $user = $this->model->find(4);
-        $this->assertEmpty($user);
+        $this->assertNotInstanceOf(stdClass::class, $user);
 
         $user  = $this->model->withDeleted()->find(4);
         $count = is_object($user) ? 1 : 0;
@@ -107,7 +133,7 @@ final class FindModelTest extends LiveModelTestCase
         $binds = $this->model->builder()->getBinds();
         $this->assertCount(0, $binds);
 
-        $query = $this->model->getLastQuery();
+        $query = $this->model->db->getLastQuery();
         $this->assertCount(1, $this->getPrivateProperty($query, 'binds'));
     }
 
@@ -155,11 +181,10 @@ final class FindModelTest extends LiveModelTestCase
     }
 
     /**
-     * @dataProvider provideGroupBy
-     *
-     * @param mixed $groupBy
-     * @param mixed $total
+     * @param bool $groupBy
+     * @param int  $total
      */
+    #[DataProvider('provideFirstAggregate')]
     public function testFirstAggregate($groupBy, $total): void
     {
         $this->createModel(UserModel::class);
@@ -168,11 +193,24 @@ final class FindModelTest extends LiveModelTestCase
             $this->model->groupBy('id');
         }
 
-        $user = $this->model->select('SUM(id) as total')->where('id >', 2)->first();
+        $ANSISQLDriverNames = ['OCI8'];
+
+        if (in_array($this->db->DBDriver, $ANSISQLDriverNames, true)) {
+            $this->model->select('SUM("id") as "total"');
+        } else {
+            $this->model->select('SUM(id) as total');
+        }
+
+        $user = $this->model
+            ->where('id >', 2)
+            ->first();
         $this->assertSame($total, (int) $user->total);
     }
 
-    public static function provideGroupBy(): iterable
+    /**
+     * @return iterable<int, array{bool, int}>
+     */
+    public static function provideFirstAggregate(): iterable
     {
         return [
             [true, 3],
@@ -181,28 +219,37 @@ final class FindModelTest extends LiveModelTestCase
     }
 
     /**
-     * @dataProvider provideAggregateAndGroupBy
-     *
-     * @param mixed $aggregate
-     * @param mixed $groupBy
+     * @param bool $aggregate
+     * @param bool $groupBy
      */
+    #[DataProvider('provideAggregateAndGroupBy')]
     public function testFirstRespectsSoftDeletes($aggregate, $groupBy): void
     {
         $this->db->table('user')
             ->where('id', 1)
             ->update(['deleted_at' => date('Y-m-d H:i:s')]);
 
-        $this->createModel(UserModel::class);
+        $model = $this->createModel(UserModel::class);
 
         if ($aggregate) {
-            $this->model->select('SUM(id) as id');
+            $ANSISQLDriverNames = ['OCI8'];
+
+            if (in_array($this->db->DBDriver, $ANSISQLDriverNames, true)) {
+                $model->select('SUM("id") as "id"');
+            } else {
+                $model->select('SUM(id) as id');
+            }
         }
 
         if ($groupBy) {
-            $this->model->groupBy('id');
+            if (! $aggregate) {
+                $model->select('id');
+            }
+
+            $model->groupBy('id');
         }
 
-        $user = $this->model->first();
+        $user = $model->first();
 
         if (! $aggregate || $groupBy) {
             $count = is_object($user) ? 1 : 0;
@@ -212,36 +259,46 @@ final class FindModelTest extends LiveModelTestCase
             $this->assertSame(9, (int) $user->id);
         }
 
-        $user = $this->model->withDeleted()->first();
+        $user = $model->withDeleted()->select('id')->first();
         $this->assertSame(1, (int) $user->id);
     }
 
     /**
-     * @dataProvider provideAggregateAndGroupBy
-     *
-     * @param mixed $aggregate
-     * @param mixed $groupBy
+     * @param bool $aggregate
+     * @param bool $groupBy
      */
+    #[DataProvider('provideAggregateAndGroupBy')]
     public function testFirstRecoverTempUseSoftDeletes($aggregate, $groupBy): void
     {
-        $this->createModel(UserModel::class);
-        $this->model->delete(1);
+        $model = $this->createModel(UserModel::class);
+        $model->delete(1);
 
         if ($aggregate) {
-            $this->model->select('sum(id) as id');
+            $ANSISQLDriverNames = ['OCI8'];
+
+            if (in_array($this->db->DBDriver, $ANSISQLDriverNames, true)) {
+                $model->select('SUM("id") as "id"');
+            } else {
+                $model->select('SUM(id) as id');
+            }
+        } else {
+            $model->select('id');
         }
 
         if ($groupBy) {
-            $this->model->groupBy('id');
+            $model->groupBy('id');
         }
 
-        $user = $this->model->withDeleted()->first();
+        $user = $model->withDeleted()->first();
         $this->assertSame(1, (int) $user->id);
 
-        $user2 = $this->model->first();
+        $user2 = $model->select('id')->first();
         $this->assertSame(2, (int) $user2->id);
     }
 
+    /**
+     * @return iterable<int, array{bool, bool}>
+     */
     public static function provideAggregateAndGroupBy(): iterable
     {
         return [
@@ -274,7 +331,7 @@ final class FindModelTest extends LiveModelTestCase
     public function testThrowsWithNoPrimaryKey(): void
     {
         $this->expectException(ModelException::class);
-        $this->expectExceptionMessage('`Tests\Support\Models\UserModel` model class does not specify a Primary Key.');
+        $this->expectExceptionMessage('"Tests\Support\Models\UserModel" model class does not specify a Primary Key.');
 
         $this->createModel(UserModel::class);
         $this->setPrivateProperty($this->model, 'primaryKey', '');
@@ -310,7 +367,7 @@ final class FindModelTest extends LiveModelTestCase
     {
         $this->seeInDatabase('user', ['name' => 'Derek Jones', 'deleted_at' => null]);
 
-        $results = $this->createModel(UserModel::class)->join('job', 'job.id = user.id')->first(1);
+        $results = $this->createModel(UserModel::class)->join('job', 'job.id = user.id')->first();
         $this->assertSame(1, (int) $results->id);
     }
 }

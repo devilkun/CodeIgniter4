@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,18 +13,26 @@
 
 namespace CodeIgniter\Database;
 
-use BadMethodCallException;
+use ArgumentCountError;
+use CodeIgniter\Database\Exceptions\DatabaseException;
 use CodeIgniter\Events\Events;
+use CodeIgniter\Exceptions\BadMethodCallException;
+use ErrorException;
 
 /**
- * Base prepared query
+ * @template TConnection
+ * @template TStatement
+ * @template TResult
+ * @template TDb of BaseConnection
+ *
+ * @implements PreparedQueryInterface<TConnection, TStatement, TResult>
  */
 abstract class BasePreparedQuery implements PreparedQueryInterface
 {
     /**
      * The prepared statement itself.
      *
-     * @var object|resource
+     * @var TStatement|null
      */
     protected $statement;
 
@@ -38,7 +48,7 @@ abstract class BasePreparedQuery implements PreparedQueryInterface
      *
      * @var string
      */
-    protected $errorString;
+    protected $errorString = '';
 
     /**
      * Holds the prepared query object
@@ -51,37 +61,28 @@ abstract class BasePreparedQuery implements PreparedQueryInterface
     /**
      * A reference to the db connection to use.
      *
-     * @var BaseConnection
+     * @var TDb
      */
     protected $db;
 
     public function __construct(BaseConnection $db)
     {
-        $this->db = &$db;
+        $this->db = $db;
     }
 
-    /**
-     * Prepares the query against the database, and saves the connection
-     * info necessary to execute the query later.
-     *
-     * NOTE: This version is based on SQL code. Child classes should
-     * override this method.
-     *
-     * @return mixed
-     */
-    public function prepare(string $sql, array $options = [], string $queryClass = 'CodeIgniter\\Database\\Query')
+    public function prepare(string $sql, array $options = [], string $queryClass = Query::class)
     {
-        // We only supports positional placeholders (?)
-        // in order to work with the execute method below, so we
-        // need to replace our named placeholders (:name)
-        $sql = preg_replace('/:[^\s,)]+/', '?', $sql);
+        // We only support positional placeholders (?), so convert
+        // named placeholders (:name or :name:) while leaving dialect
+        // syntax like PostgreSQL casts (::type) untouched.
+        $sql = preg_replace('/(?<!:):([a-zA-Z_]\w*):?(?!:)/', '?', $sql);
 
         /** @var Query $query */
         $query = new $queryClass($this->db);
 
         $query->setQuery($sql);
 
-        if (! empty($this->db->swapPre) && ! empty($this->db->DBPrefix)) {
+        if ($this->db->swapPre !== '' && $this->db->DBPrefix !== '') {
             $query->swapPrefix($this->db->DBPrefix, $this->db->swapPre);
         }
 
@@ -91,33 +92,76 @@ abstract class BasePreparedQuery implements PreparedQueryInterface
     }
 
     /**
-     * The database-dependent portion of the prepare statement.
+     * @param array<array-key, mixed> $options Passed to the connection's prepare statement. Only the SQLSRV driver uses it.
      *
-     * @return mixed
+     * @return $this
      */
     abstract public function _prepare(string $sql, array $options = []);
 
     /**
-     * Takes a new set of data and runs it against the currently
-     * prepared query. Upon success, will return a Results object.
-     *
-     * @return ResultInterface
+     * @throws DatabaseException
      */
     public function execute(...$data)
     {
         // Execute the Query.
         $startTime = microtime(true);
 
-        $this->_execute($data);
+        try {
+            $exception = null;
+            $result    = $this->_execute($data);
+        } catch (ArgumentCountError|ErrorException $exception) {
+            $result = false;
+        }
 
         // Update our query object
         $query = clone $this->query;
         $query->setBinds($data);
 
+        if ($result === false) {
+            $query->setDuration($startTime, $startTime);
+
+            // This will trigger a rollback if transactions are being used
+            $this->db->handleTransStatus();
+
+            if ($this->db->DBDebug) {
+                // We call this function in order to roll-back queries
+                // if transactions are enabled. If we don't call this here
+                // the error message will trigger an exit, causing the
+                // transactions to remain in limbo.
+                while ($this->db->transDepth !== 0) {
+                    $transDepth = $this->db->transDepth;
+                    $this->db->transComplete();
+
+                    if ($transDepth === $this->db->transDepth) {
+                        log_message('error', 'Database: Failure during an automated transaction commit/rollback!');
+                        break;
+                    }
+                }
+
+                // Let others do something with this query.
+                Events::trigger('DBQuery', $query);
+
+                if ($exception !== null) {
+                    throw new DatabaseException($exception->getMessage(), $exception->getCode(), $exception);
+                }
+
+                return false;
+            }
+
+            // Let others do something with this query.
+            Events::trigger('DBQuery', $query);
+
+            return false;
+        }
+
         $query->setDuration($startTime);
 
         // Let others do something with this query
         Events::trigger('DBQuery', $query);
+
+        if ($this->db->isWriteType((string) $query)) {
+            return true;
+        }
 
         // Return a result object
         $resultClass = str_replace('PreparedQuery', 'Result', static::class);
@@ -128,32 +172,32 @@ abstract class BasePreparedQuery implements PreparedQueryInterface
     }
 
     /**
-     * The database dependant version of the execute method.
+     * @param list<mixed> $data
      */
     abstract public function _execute(array $data): bool;
 
     /**
      * Returns the result object for the prepared query.
      *
-     * @return mixed
+     * @return false|object|resource|null
      */
     abstract public function _getResult();
 
-    /**
-     * Explicitly closes the statement.
-     */
-    public function close()
+    public function close(): bool
     {
-        if (! is_object($this->statement)) {
-            return;
+        if (! isset($this->statement)) {
+            throw new BadMethodCallException('Cannot call close on a non-existing prepared statement.');
         }
 
-        $this->statement->close();
+        try {
+            return $this->_close();
+        } finally {
+            $this->statement = null;
+        }
     }
 
-    /**
-     * Returns the SQL that has been prepared.
-     */
+    abstract protected function _close(): bool;
+
     public function getQueryString(): string
     {
         if (! $this->query instanceof QueryInterface) {
@@ -168,22 +212,24 @@ abstract class BasePreparedQuery implements PreparedQueryInterface
      */
     public function hasError(): bool
     {
-        return ! empty($this->errorString);
+        return $this->errorString !== '';
     }
 
-    /**
-     * Returns the error code created while executing this statement.
-     */
     public function getErrorCode(): int
     {
         return $this->errorCode;
     }
 
-    /**
-     * Returns the error message created while executing this statement.
-     */
     public function getErrorMessage(): string
     {
         return $this->errorString;
+    }
+
+    /**
+     * Whether the input contain binary data.
+     */
+    protected function isBinary(string $input): bool
+    {
+        return mb_detect_encoding($input, 'UTF-8', true) === false;
     }
 }

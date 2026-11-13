@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,8 +15,9 @@ namespace CodeIgniter\Files;
 
 use CodeIgniter\Files\Exceptions\FileException;
 use CodeIgniter\Files\Exceptions\FileNotFoundException;
+use CodeIgniter\I18n\Time;
 use Config\Mimes;
-use ReturnTypeWillChange;
+use RuntimeException;
 use SplFileInfo;
 
 /**
@@ -25,7 +28,7 @@ class File extends SplFileInfo
     /**
      * The files size in bytes
      *
-     * @var int
+     * @var false|int|null
      */
     protected $size;
 
@@ -56,31 +59,47 @@ class File extends SplFileInfo
      * the file in the $_FILES array if available, as PHP calculates this based
      * on the actual size transmitted.
      *
-     * @return false|int The file size in bytes, or false on failure
+     * @throws RuntimeException if the file does not exist or an error occurs
      */
-    #[ReturnTypeWillChange]
-    public function getSize()
+    public function getSize(): false|int
     {
-        return $this->size ?? ($this->size = parent::getSize());
+        return $this->size ??= parent::getSize();
+    }
+
+    /**
+     * Retrieve the file size by unit, calculated in IEC standards with 1024 as base value.
+     *
+     * @param positive-int $precision
+     */
+    public function getSizeByBinaryUnit(FileSizeUnit $unit = FileSizeUnit::B, int $precision = 3): int|string
+    {
+        return $this->getSizeByUnitInternal(1024, $unit, $precision);
+    }
+
+    /**
+     * Retrieve the file size by unit, calculated in metric standards with 1000 as base value.
+     *
+     * @param positive-int $precision
+     */
+    public function getSizeByMetricUnit(FileSizeUnit $unit = FileSizeUnit::B, int $precision = 3): int|string
+    {
+        return $this->getSizeByUnitInternal(1000, $unit, $precision);
     }
 
     /**
      * Retrieve the file size by unit.
      *
+     * @deprecated 4.6.0 Use getSizeByBinaryUnit() or getSizeByMetricUnit() instead
+     *
      * @return false|int|string
      */
     public function getSizeByUnit(string $unit = 'b')
     {
-        switch (strtolower($unit)) {
-            case 'kb':
-                return number_format($this->getSize() / 1024, 3);
-
-            case 'mb':
-                return number_format(($this->getSize() / 1024) / 1024, 3);
-
-            default:
-                return $this->getSize();
-        }
+        return match (strtolower($unit)) {
+            'kb'    => $this->getSizeByBinaryUnit(FileSizeUnit::KB),
+            'mb'    => $this->getSizeByBinaryUnit(FileSizeUnit::MB),
+            default => $this->getSize(),
+        };
     }
 
     /**
@@ -89,7 +108,13 @@ class File extends SplFileInfo
      */
     public function guessExtension(): ?string
     {
-        return Mimes::guessExtensionFromType($this->getMimeType());
+        // naively get the path extension using pathinfo
+        $realPath = $this->getRealPath();
+        $pathinfo = pathinfo($realPath === false ? $this->__toString() : $realPath) + ['extension' => ''];
+
+        $proposedExtension = $pathinfo['extension'];
+
+        return Mimes::guessExtensionFromType($this->getMimeType(), $proposedExtension);
     }
 
     /**
@@ -106,10 +131,9 @@ class File extends SplFileInfo
         }
 
         $finfo    = finfo_open(FILEINFO_MIME_TYPE);
-        $mimeType = finfo_file($finfo, $this->getRealPath() ?: $this->__toString());
-        finfo_close($finfo);
+        $realPath = $this->getRealPath();
 
-        return $mimeType;
+        return finfo_file($finfo, $realPath === false ? $this->__toString() : $realPath);
     }
 
     /**
@@ -119,9 +143,9 @@ class File extends SplFileInfo
     public function getRandomName(): string
     {
         $extension = $this->getExtension();
-        $extension = empty($extension) ? '' : '.' . $extension;
+        $extension = $extension === '' ? '' : '.' . $extension;
 
-        return time() . '_' . bin2hex(random_bytes(10)) . $extension;
+        return Time::now()->getTimestamp() . '_' . bin2hex(random_bytes(10)) . $extension;
     }
 
     /**
@@ -131,11 +155,12 @@ class File extends SplFileInfo
      */
     public function move(string $targetPath, ?string $name = null, bool $overwrite = false)
     {
-        $targetPath  = rtrim($targetPath, '/') . '/';
-        $name        = $name ?? $this->getBaseName();
+        $targetPath = rtrim($targetPath, '/') . '/';
+        $name ??= $this->getBasename();
         $destination = $overwrite ? $targetPath . $name : $this->getDestination($targetPath . $name);
 
-        $oldName = $this->getRealPath() ?: $this->__toString();
+        $realPath = $this->getRealPath();
+        $oldName  = $realPath === false ? $this->__toString() : $realPath;
 
         if (! @rename($oldName, $destination)) {
             $error = error_get_last();
@@ -143,7 +168,7 @@ class File extends SplFileInfo
             throw FileException::forUnableToMove($this->getBasename(), $targetPath, strip_tags($error['message']));
         }
 
-        @chmod($destination, 0777 & ~umask());
+        @chmod($destination, 0666 & ~umask());
 
         return new self($destination);
     }
@@ -165,7 +190,7 @@ class File extends SplFileInfo
             $info      = pathinfo($destination);
             $extension = isset($info['extension']) ? '.' . $info['extension'] : '';
 
-            if (strpos($info['filename'], $delimiter) !== false) {
+            if (str_contains($info['filename'], $delimiter)) {
                 $parts = explode($delimiter, $info['filename']);
 
                 if (is_numeric(end($parts))) {
@@ -182,5 +207,18 @@ class File extends SplFileInfo
         }
 
         return $destination;
+    }
+
+    private function getSizeByUnitInternal(int $fileSizeBase, FileSizeUnit $unit, int $precision): int|string
+    {
+        $exponent = $unit->value;
+        $divider  = $fileSizeBase ** $exponent;
+        $size     = $this->getSize() / $divider;
+
+        if ($unit !== FileSizeUnit::B) {
+            return number_format($size, $precision);
+        }
+
+        return $size;
     }
 }

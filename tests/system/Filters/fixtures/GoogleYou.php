@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,7 +13,6 @@
 
 namespace CodeIgniter\Filters\fixtures;
 
-use CodeIgniter\Config\Services;
 use CodeIgniter\Filters\FilterInterface;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -20,13 +21,14 @@ class GoogleYou implements FilterInterface
 {
     public function before(RequestInterface $request, $arguments = null)
     {
-        $response      = Services::response();
-        $response->csp = 'http://google.com';
+        $response = service('response');
+        $response->setBody('http://google.com');
 
         return $response;
     }
 
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)
     {
+        return null;
     }
 }

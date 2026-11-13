@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,9 +13,11 @@
 
 namespace Tests\Support\MigrationTestMigrations\Database\Migrations;
 
-class Migration_some_migration extends \CodeIgniter\Database\Migration
+use CodeIgniter\Database\Migration;
+
+class Migration_some_migration extends Migration
 {
-    public function up()
+    public function up(): void
     {
         $this->forge->addField([
             'key' => [
@@ -21,14 +25,14 @@ class Migration_some_migration extends \CodeIgniter\Database\Migration
                 'constraint' => 255,
             ],
         ]);
-        $this->forge->createTable('foo', true);
+        $this->forge->createTable('foo');
 
         $this->db->table('foo')->insert([
             'key' => 'foobar',
         ]);
     }
 
-    public function down()
+    public function down(): void
     {
         $this->forge->dropTable('foo', true);
     }

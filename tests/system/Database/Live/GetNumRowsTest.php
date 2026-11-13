@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,44 +15,24 @@ namespace CodeIgniter\Database\Live;
 
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
+use PHPUnit\Framework\Attributes\Group;
+use Tests\Support\Database\Seeds\CITestSeeder;
 
 /**
  * @internal
  */
+#[Group('DatabaseLive')]
 final class GetNumRowsTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
 
     protected $refresh = true;
-
-    protected $seed = 'Tests\Support\Database\Seeds\CITestSeeder';
-
-    /**
-     * Added as instructed at https://codeigniter4.github.io/userguide/testing/database.html#the-test-class
-     * {@inheritDoc}
-     *
-     * @see \CodeIgniter\Test\CIDatabaseTestCase::setUp()
-     */
-    protected function setUp(): void
-    {
-        parent::setUp();
-    }
-
-    /**
-     * Added as instructed at https://codeigniter4.github.io/userguide/testing/database.html#the-test-class
-     * {@inheritDoc}
-     *
-     * @see \CodeIgniter\Test\CIDatabaseTestCase::tearDown()
-     */
-    protected function tearDown(): void
-    {
-        parent::tearDown();
-    }
+    protected $seed    = CITestSeeder::class;
 
     /**
      * tests newly added ResultInterface::getNumRows with a live db
      */
-    public function testGetRowNum()
+    public function testGetRowNum(): void
     {
         $query = $this->db->table('job')->get();
         $this->assertSame(4, $query->getNumRows());

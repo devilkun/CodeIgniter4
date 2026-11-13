@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,26 +15,19 @@ namespace Tests\Support\Models;
 
 use CodeIgniter\Model;
 
+/**
+ * @method int affectedRows()
+ */
 class UserModel extends Model
 {
-    protected $table = 'user';
-
+    protected $table         = 'user';
     protected $allowedFields = [
         'name',
         'email',
         'country',
         'deleted_at',
     ];
-
-    protected $returnType = 'object';
-
+    protected $returnType     = 'object';
     protected $useSoftDeletes = true;
-
-    protected $dateFormat = 'datetime';
-
-    public $name = '';
-
-    public $email = '';
-
-    public $country = '';
+    protected $dateFormat     = 'datetime';
 }

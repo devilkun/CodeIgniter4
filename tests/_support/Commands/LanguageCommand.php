@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -25,13 +27,14 @@ class LanguageCommand extends BaseCommand
     protected $options     = [
         '--lang' => 'The language folder to save the file.',
         '--sort' => 'Turn on/off the sortImports flag.',
+        '--crlf' => 'Use CRLF line endings in the template.',
     ];
 
-    public function run(array $params)
+    public function run(array $params): void
     {
         $this->setHasClassName(false);
-        $params[0]      = 'Foobar';
-        $params['lang'] = $params['lang'] ?? 'en';
+        $params[0] = 'Foobar';
+        $params['lang'] ??= 'en';
 
         $this->component = 'Language';
         $this->directory = 'Language\\' . $params['lang'];
@@ -39,11 +42,13 @@ class LanguageCommand extends BaseCommand
         $sort = (isset($params['sort']) && $params['sort'] === 'off') ? false : true;
         $this->setSortImports($sort);
 
-        $this->execute($params);
+        $this->generateClass($params);
     }
 
     protected function prepare(string $class): string
     {
-        return file_get_contents(__DIR__ . '/Foobar.php') ?: '';
+        $template = file_get_contents(__DIR__ . '/Foobar.php') ?: '';
+
+        return $this->getOption('crlf') === true ? str_replace("\n", "\r\n", $template) : $template;
     }
 }

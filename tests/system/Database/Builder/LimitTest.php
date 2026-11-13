@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,10 +16,12 @@ namespace CodeIgniter\Database\Builder;
 use CodeIgniter\Database\BaseBuilder;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\Mock\MockConnection;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class LimitTest extends CIUnitTestCase
 {
     protected $db;
@@ -29,7 +33,7 @@ final class LimitTest extends CIUnitTestCase
         $this->db = new MockConnection([]);
     }
 
-    public function testLimitAlone()
+    public function testLimitAlone(): void
     {
         $builder = new BaseBuilder('user', $this->db);
 
@@ -40,7 +44,7 @@ final class LimitTest extends CIUnitTestCase
         $this->assertSame($expectedSQL, str_replace("\n", ' ', $builder->getCompiledSelect()));
     }
 
-    public function testLimitAndOffset()
+    public function testLimitAndOffset(): void
     {
         $builder = new BaseBuilder('user', $this->db);
 
@@ -51,7 +55,7 @@ final class LimitTest extends CIUnitTestCase
         $this->assertSame($expectedSQL, str_replace("\n", ' ', $builder->getCompiledSelect()));
     }
 
-    public function testLimitAndOffsetMethod()
+    public function testLimitAndOffsetMethod(): void
     {
         $builder = new BaseBuilder('user', $this->db);
 

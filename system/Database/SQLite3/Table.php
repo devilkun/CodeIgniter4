@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,10 +14,9 @@
 namespace CodeIgniter\Database\SQLite3;
 
 use CodeIgniter\Database\Exceptions\DataException;
+use stdClass;
 
 /**
- * Class Table
- *
  * Provides missing features for altering tables that are common
  * in other supported databases, but are missing from SQLite.
  * These are needed in order to support migrations during testing
@@ -27,21 +28,21 @@ class Table
     /**
      * All of the fields this table represents.
      *
-     * @var array
+     * @var array<string, array<string, bool|int|string|null>> [name => attributes]
      */
     protected $fields = [];
 
     /**
      * All of the unique/primary keys in the table.
      *
-     * @var array
+     * @var array<string, array{fields: list<string>, type: string}>
      */
     protected $keys = [];
 
     /**
      * All of the foreign keys in the table.
      *
-     * @var array
+     * @var array<array-key, stdClass>
      */
     protected $foreignKeys = [];
 
@@ -95,7 +96,7 @@ class Table
 
         $prefix = $this->db->DBPrefix;
 
-        if (! empty($prefix) && strpos($table, $prefix) === 0) {
+        if ($prefix !== '' && str_starts_with($table, $prefix)) {
             $table = substr($table, strlen($prefix));
         }
 
@@ -108,6 +109,13 @@ class Table
         $this->fields = $this->formatFields($this->db->getFieldData($table));
 
         $this->keys = array_merge($this->keys, $this->formatKeys($this->db->getIndexData($table)));
+
+        // if primary key index exists twice then remove psuedo index name 'primary'.
+        $primaryIndexes = array_filter($this->keys, static fn ($index): bool => $index['type'] === 'primary');
+
+        if ($primaryIndexes !== [] && count($primaryIndexes) > 1 && array_key_exists('primary', $this->keys)) {
+            unset($this->keys['primary']);
+        }
 
         $this->foreignKeys = $this->db->getForeignKeyData($table);
 
@@ -148,7 +156,7 @@ class Table
     /**
      * Drops columns from the table.
      *
-     * @param array|string $columns
+     * @param list<string>|string $columns Column names to drop.
      *
      * @return Table
      */
@@ -169,19 +177,34 @@ class Table
     }
 
     /**
-     * Modifies a field, including changing data type,
-     * renaming, etc.
+     * Modifies a field, including changing data type, renaming, etc.
+     *
+     * @param list<array<string, bool|int|string|null>> $fieldsToModify
      *
      * @return Table
      */
-    public function modifyColumn(array $field)
+    public function modifyColumn(array $fieldsToModify)
     {
-        $field = $field[0];
+        foreach ($fieldsToModify as $field) {
+            $oldName = $field['name'];
+            unset($field['name']);
 
-        $oldName = $field['name'];
-        unset($field['name']);
+            $this->fields[$oldName] = $field;
+        }
 
-        $this->fields[$oldName] = $field;
+        return $this;
+    }
+
+    /**
+     * Drops the primary key
+     */
+    public function dropPrimaryKey(): Table
+    {
+        $primaryIndexes = array_filter($this->keys, static fn ($index): bool => strtolower($index['type']) === 'primary');
+
+        foreach (array_keys($primaryIndexes) as $key) {
+            unset($this->keys[$key]);
+        }
 
         return $this;
     }
@@ -192,24 +215,68 @@ class Table
      *
      * @return Table
      */
-    public function dropForeignKey(string $column)
+    public function dropForeignKey(string $foreignName)
     {
-        if (empty($this->foreignKeys)) {
+        if ($this->foreignKeys === []) {
             return $this;
         }
 
-        for ($i = 0; $i < count($this->foreignKeys); $i++) {
-            if ($this->foreignKeys[$i]->table_name !== $this->tableName) {
-                continue;
-            }
-
-            // The column name should be the first thing in the constraint name
-            if (strpos($this->foreignKeys[$i]->constraint_name, $column) !== 0) {
-                continue;
-            }
-
-            unset($this->foreignKeys[$i]);
+        if (isset($this->foreignKeys[$foreignName])) {
+            unset($this->foreignKeys[$foreignName]);
         }
+
+        return $this;
+    }
+
+    /**
+     * Adds primary key
+     *
+     * @param array{fields?: list<string>} $fields
+     */
+    public function addPrimaryKey(array $fields): Table
+    {
+        $primaryIndexes = array_filter($this->keys, static fn ($index): bool => strtolower($index['type']) === 'primary');
+
+        // if primary key already exists we can't add another one
+        if ($primaryIndexes !== []) {
+            return $this;
+        }
+
+        // add array to keys of fields
+        $pk = [
+            'fields' => $fields['fields'],
+            'type'   => 'primary',
+        ];
+
+        $this->keys['primary'] = $pk;
+
+        return $this;
+    }
+
+    /**
+     * Add a foreign key
+     *
+     * @param list<array{field: list<string>, referenceTable: string, referenceField: list<string>, onDelete: string, onUpdate: string, fkName: string}> $foreignKeys
+     *
+     * @return $this
+     */
+    public function addForeignKey(array $foreignKeys)
+    {
+        $fk = [];
+
+        // convert to object
+        foreach ($foreignKeys as $row) {
+            $obj                      = new stdClass();
+            $obj->column_name         = $row['field'];
+            $obj->foreign_table_name  = $row['referenceTable'];
+            $obj->foreign_column_name = $row['referenceField'];
+            $obj->on_delete           = $row['onDelete'];
+            $obj->on_update           = $row['onUpdate'];
+
+            $fk[] = $obj;
+        }
+
+        $this->foreignKeys = array_merge($this->foreignKeys, $fk);
 
         return $this;
     }
@@ -217,7 +284,7 @@ class Table
     /**
      * Creates the new table based on our current fields.
      *
-     * @return mixed
+     * @return bool
      */
     protected function createTable()
     {
@@ -239,23 +306,45 @@ class Table
 
         $this->forge->addField($fields);
 
+        $fieldNames = array_keys($fields);
+
+        $this->keys = array_filter(
+            $this->keys,
+            static fn ($index): bool => count(array_intersect($index['fields'], $fieldNames)) === count($index['fields']),
+        );
+
         // Unique/Index keys
         if (is_array($this->keys)) {
-            foreach ($this->keys as $key) {
+            foreach ($this->keys as $keyName => $key) {
                 switch ($key['type']) {
                     case 'primary':
                         $this->forge->addPrimaryKey($key['fields']);
                         break;
 
                     case 'unique':
-                        $this->forge->addUniqueKey($key['fields']);
+                        $this->forge->addUniqueKey($key['fields'], $keyName);
                         break;
 
                     case 'index':
-                        $this->forge->addKey($key['fields']);
+                        $this->forge->addKey($key['fields'], false, false, $keyName);
                         break;
                 }
             }
+        }
+
+        foreach ($this->foreignKeys as $foreignKey) {
+            $foreignTableName = $foreignKey->foreign_table_name;
+            $prefix           = $this->db->DBPrefix;
+
+            if ($prefix !== '' && str_starts_with($foreignTableName, $prefix)) {
+                $foreignTableName = substr($foreignTableName, strlen($prefix));
+            }
+
+            $this->forge->addForeignKey(
+                $foreignKey->column_name,
+                $foreignTableName,
+                $foreignKey->foreign_column_name,
+            );
         }
 
         return $this->forge->createTable($this->tableName);
@@ -265,6 +354,8 @@ class Table
      * Copies data from our old table to the new one,
      * taking care map data correctly based on any columns
      * that have been renamed.
+     *
+     * @return void
      */
     protected function copyData()
     {
@@ -276,19 +367,27 @@ class Table
             $exFields[]  = $name;
         }
 
-        $exFields  = implode(', ', $exFields);
-        $newFields = implode(', ', $newFields);
+        $exFields = implode(
+            ', ',
+            array_map(fn ($item) => $this->db->protectIdentifiers($item), $exFields),
+        );
+        $newFields = implode(
+            ', ',
+            array_map(fn ($item) => $this->db->protectIdentifiers($item), $newFields),
+        );
 
-        $this->db->query("INSERT INTO {$this->prefixedTableName}({$newFields}) SELECT {$exFields} FROM {$this->db->DBPrefix}temp_{$this->tableName}");
+        $this->db->query(
+            "INSERT INTO {$this->prefixedTableName}({$newFields}) SELECT {$exFields} FROM {$this->db->DBPrefix}temp_{$this->tableName}",
+        );
     }
 
     /**
      * Converts fields retrieved from the database to
      * the format needed for creating fields with Forge.
      *
-     * @param array|bool $fields
+     * @param bool|list<stdClass> $fields
      *
-     * @return mixed
+     * @return ($fields is array ? array<string, array<string, bool|int|string|null>> : mixed)
      */
     protected function formatFields($fields)
     {
@@ -305,8 +404,26 @@ class Table
                 'null'    => $field->nullable,
             ];
 
+            if ($field->default === null) {
+                // `null` means that the default value is not defined.
+                unset($return[$field->name]['default']);
+            } elseif ($field->default === 'NULL') {
+                // 'NULL' means that the default value is NULL.
+                $return[$field->name]['default'] = null;
+            } else {
+                $default = trim($field->default, "'");
+
+                if ($this->isIntegerType($field->type)) {
+                    $default = (int) $default;
+                } elseif ($this->isNumericType($field->type)) {
+                    $default = (float) $default;
+                }
+
+                $return[$field->name]['default'] = $default;
+            }
+
             if ($field->primary_key) {
-                $this->keys[$field->name] = [
+                $this->keys['primary'] = [
                     'fields' => [$field->name],
                     'type'   => 'primary',
                 ];
@@ -317,25 +434,45 @@ class Table
     }
 
     /**
+     * Is INTEGER type?
+     *
+     * @param string $type SQLite data type (case-insensitive)
+     *
+     * @see https://www.sqlite.org/datatype3.html
+     */
+    private function isIntegerType(string $type): bool
+    {
+        return str_contains(strtoupper($type), 'INT');
+    }
+
+    /**
+     * Is NUMERIC type?
+     *
+     * @param string $type SQLite data type (case-insensitive)
+     *
+     * @see https://www.sqlite.org/datatype3.html
+     */
+    private function isNumericType(string $type): bool
+    {
+        return in_array(strtoupper($type), ['NUMERIC', 'DECIMAL'], true);
+    }
+
+    /**
      * Converts keys retrieved from the database to
      * the format needed to create later.
      *
-     * @param mixed $keys
+     * @param array<string, stdClass> $keys
      *
-     * @return mixed
+     * @return array<string, array{fields: list<string>, type: string}>
      */
     protected function formatKeys($keys)
     {
-        if (! is_array($keys)) {
-            return $keys;
-        }
-
         $return = [];
 
         foreach ($keys as $name => $key) {
-            $return[$name] = [
+            $return[strtolower($name)] = [
                 'fields' => $key->fields,
-                'type'   => 'index',
+                'type'   => strtolower($key->type),
             ];
         }
 
@@ -345,6 +482,8 @@ class Table
     /**
      * Attempts to drop all indexes and constraints
      * from the database for this table.
+     *
+     * @return void
      */
     protected function dropIndexes()
     {
@@ -352,12 +491,12 @@ class Table
             return;
         }
 
-        foreach ($this->keys as $name => $key) {
-            if ($key['type'] === 'primary' || $key['type'] === 'unique') {
+        foreach (array_keys($this->keys) as $name) {
+            if ($name === 'primary') {
                 continue;
             }
 
-            $this->db->query("DROP INDEX IF EXISTS '{$name}'");
+            $this->db->query('DROP INDEX IF EXISTS ' . $this->db->escapeIdentifier($name));
         }
     }
 }

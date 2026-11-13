@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -15,10 +17,12 @@ use CodeIgniter\Database\Exceptions\DataException;
 use CodeIgniter\Entity\Entity;
 use CodeIgniter\I18n\Time;
 use CodeIgniter\Model;
+use PHPUnit\Framework\Attributes\Group;
 use stdClass;
 use Tests\Support\Models\EntityModel;
 use Tests\Support\Models\JobModel;
 use Tests\Support\Models\SecondaryModel;
+use Tests\Support\Models\SimpleEntity;
 use Tests\Support\Models\UserModel;
 use Tests\Support\Models\ValidModel;
 use Tests\Support\Models\WithoutAutoIncrementModel;
@@ -26,6 +30,7 @@ use Tests\Support\Models\WithoutAutoIncrementModel;
 /**
  * @internal
  */
+#[Group('DatabaseLive')]
 final class SaveModelTest extends LiveModelTestCase
 {
     public function testSaveNewRecordObject(): void
@@ -37,6 +42,24 @@ final class SaveModelTest extends LiveModelTestCase
         $data->description = 'Makes peoples things dissappear.';
 
         $this->model->protect(false)->save($data);
+        $this->seeInDatabase('job', ['name' => 'Magician']);
+    }
+
+    /**
+     * @see https://github.com/codeigniter4/CodeIgniter4/issues/8613
+     */
+    public function testSaveNewRecordArrayWithEmptyStringId(): void
+    {
+        $this->createModel(JobModel::class);
+
+        $data = [
+            'id'          => '',
+            'name'        => 'Magician',
+            'description' => 'Makes peoples things dissappear.',
+        ];
+
+        $this->model->save($data);
+
         $this->seeInDatabase('job', ['name' => 'Magician']);
     }
 
@@ -55,17 +78,20 @@ final class SaveModelTest extends LiveModelTestCase
 
     public function testSaveNewRecordArrayFail(): void
     {
-        $this->setPrivateProperty($this->db, 'DBDebug', false);
+        // WARNING this value will persist! take care to roll it back.
+        $this->disableDBDebug();
         $this->createModel(JobModel::class);
 
         $data = [
             'name123'     => 'Apprentice',
             'description' => 'That thing you do.',
         ];
-
         $result = $this->model->protect(false)->save($data);
+
         $this->assertFalse($result);
         $this->dontSeeInDatabase('job', ['name' => 'Apprentice']);
+
+        $this->enableDBDebug();
     }
 
     public function testSaveUpdateRecordArray(): void
@@ -84,7 +110,8 @@ final class SaveModelTest extends LiveModelTestCase
 
     public function testSaveUpdateRecordArrayFail(): void
     {
-        $this->setPrivateProperty($this->db, 'DBDebug', false);
+        // WARNING this value will persist! take care to roll it back.
+        $this->disableDBDebug();
         $this->createModel(JobModel::class);
 
         $data = [
@@ -92,10 +119,12 @@ final class SaveModelTest extends LiveModelTestCase
             'name123'     => 'Apprentice',
             'description' => 'That thing you do.',
         ];
-
         $result = $this->model->protect(false)->save($data);
+
         $this->assertFalse($result);
         $this->dontSeeInDatabase('job', ['name' => 'Apprentice']);
+
+        $this->enableDBDebug();
     }
 
     public function testSaveUpdateRecordObject(): void
@@ -138,20 +167,21 @@ final class SaveModelTest extends LiveModelTestCase
             'created_at'  => time(),
         ]);
 
-        $this->createModel(EntityModel::class);
+        $model = $this->createModel(EntityModel::class);
 
-        $job = $this->model->select('id, name')->where('name', 'Rocket Scientist')->first();
+        $job = $model->select('id, name')->where('name', 'Rocket Scientist')->first();
         $this->assertNull($job->description);
         $this->assertSame('Rocket Scientist', $job->name);
 
         $job->description = 'Some guitar description';
+        $this->assertInstanceOf(SimpleEntity::class, $job);
         $this->model->save($job);
         $this->seeInDatabase('job', [
             'id'   => $job->id,
             'name' => 'Rocket Scientist',
         ]);
 
-        $job = $this->model->select('id, name, description')->where('name', 'Rocket Scientist')->first();
+        $job = $model->select('id, name, description')->where('name', 'Rocket Scientist')->first();
         $this->assertSame('Some guitar description', $job->description);
     }
 
@@ -209,22 +239,19 @@ final class SaveModelTest extends LiveModelTestCase
     public function testSaveNewEntityWithDateTime(): void
     {
         $entity = new class () extends Entity {
-            protected $id;
-            protected $name;
-            protected $email;
-            protected $country;
-            protected $deleted;
-            protected $created_at;
-            protected $updated_at;
-
-            protected $_options = [
-                'datamap' => [],
-                'dates'   => [
-                    'created_at',
-                    'updated_at',
-                    'deleted_at',
-                ],
-                'casts' => [],
+            protected $attributes = [
+                'id'         => null,
+                'name'       => null,
+                'email'      => null,
+                'country'    => null,
+                'deleted_at' => null,
+                'created_at' => null,
+                'updated_at' => null,
+            ];
+            protected $dates = [
+                'created_at',
+                'updated_at',
+                'deleted_at',
             ];
         };
 
@@ -233,7 +260,7 @@ final class SaveModelTest extends LiveModelTestCase
         $entity->name       = 'Mark';
         $entity->email      = 'mark@example.com';
         $entity->country    = 'India';
-        $entity->deleted    = 0;
+        $entity->deleted_at = null;
         $entity->created_at = new Time('now');
 
         $this->setPrivateProperty($this->model, 'useTimestamps', true);
@@ -243,22 +270,20 @@ final class SaveModelTest extends LiveModelTestCase
     public function testSaveNewEntityWithDate(): void
     {
         $entity = new class () extends Entity {
-            protected $id;
-            protected $name;
-            protected $created_at;
-            protected $updated_at;
-            protected $_options = [
-                'datamap' => [],
-                'dates'   => [
-                    'created_at',
-                    'updated_at',
-                    'deleted_at',
-                ],
-                'casts' => [],
+            protected $attributes = [
+                'id'         => null,
+                'name'       => null,
+                'created_at' => null,
+                'updated_at' => null,
+            ];
+            protected $dates = [
+                'created_at',
+                'updated_at',
+                'deleted_at',
             ];
         };
 
-        $testModel                   = new class () extends Model {
+        $testModel = new class () extends Model {
             protected $table         = 'empty';
             protected $allowedFields = [
                 'name',
@@ -266,7 +291,6 @@ final class SaveModelTest extends LiveModelTestCase
             protected $returnType     = 'object';
             protected $useSoftDeletes = true;
             protected $dateFormat     = 'date';
-            public $name              = '';
         };
 
         $entity->name       = 'Mark';
@@ -274,7 +298,7 @@ final class SaveModelTest extends LiveModelTestCase
 
         $this->setPrivateProperty($testModel, 'useTimestamps', true);
         $this->assertTrue($testModel->save($entity));
-        $testModel->truncate();
+        $testModel->db->table('empty')->truncate();
     }
 
     public function testInvalidAllowedFieldException(): void
@@ -288,7 +312,7 @@ final class SaveModelTest extends LiveModelTestCase
         ];
 
         $this->expectException(DataException::class);
-        $this->expectExceptionMessage('Allowed fields must be specified for model: Tests\Support\Models\JobModel');
+        $this->expectExceptionMessage('Allowed fields must be specified for model: "Tests\Support\Models\JobModel"');
 
         $this->model->save($data);
     }
@@ -314,5 +338,67 @@ final class SaveModelTest extends LiveModelTestCase
         $this->model->save($update);
         $this->assertSame($insert['key'], $this->model->getInsertID());
         $this->seeInDatabase('without_auto_increment', $update);
+    }
+
+    public function testUseAutoIncrementSetToFalseSaveObject(): void
+    {
+        $this->createModel(WithoutAutoIncrementModel::class);
+
+        $insert = [
+            'key'   => 'some_random_key',
+            'value' => 'some value',
+        ];
+        $this->model->save((object) $insert);
+
+        $this->assertSame($insert['key'], $this->model->getInsertID());
+        $this->seeInDatabase('without_auto_increment', $insert);
+
+        $update = [
+            'key'   => 'some_random_key',
+            'value' => 'some different value',
+        ];
+        $this->model->save((object) $update);
+
+        $this->assertSame($insert['key'], $this->model->getInsertID());
+        $this->seeInDatabase('without_auto_increment', $update);
+    }
+
+    /**
+     * @see https://github.com/codeigniter4/CodeIgniter4/issues/9306
+     */
+    public function testSaveNewEntityWithMappedPrimaryKey(): void
+    {
+        $entity = new class () extends Entity {
+            protected $attributes = [
+                'id'   => null,
+                'name' => null,
+            ];
+            protected $original = [
+                'id'   => null,
+                'name' => null,
+            ];
+            protected $datamap = [
+                'new_kid_in_the_block' => 'id',
+            ];
+        };
+
+        $testModel = new class () extends Model {
+            protected $table         = 'empty';
+            protected $allowedFields = [
+                'name',
+            ];
+            protected $returnType = 'object';
+        };
+
+        $entity->name = 'New';
+        $this->assertTrue($testModel->save($entity));
+        $this->seeInDatabase('empty', ['id' => 1, 'name' => 'New']);
+
+        $entity->new_kid_in_the_block = 1;
+        $entity->name                 = 'Updated';
+        $this->assertTrue($testModel->save($entity));
+
+        $this->seeInDatabase('empty', ['id' => 1, 'name' => 'Updated']);
+        $testModel->db->table('empty')->truncate();
     }
 }

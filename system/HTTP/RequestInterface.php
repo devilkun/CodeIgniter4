@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,13 +14,11 @@
 namespace CodeIgniter\HTTP;
 
 /**
- * Expected behavior of an HTTP request
+ * Representation of an incoming, server-side HTTP request.
  *
- * @mixin IncomingRequest
- * @mixin CLIRequest
- * @mixin CURLRequest
+ * Corresponds to Psr7\ServerRequestInterface.
  */
-interface RequestInterface
+interface RequestInterface extends OutgoingRequestInterface
 {
     /**
      * Gets the user's IP address.
@@ -29,31 +29,11 @@ interface RequestInterface
     public function getIPAddress(): string;
 
     /**
-     * Validate an IP address
-     *
-     * @param string $ip    IP Address
-     * @param string $which IP protocol: 'ipv4' or 'ipv6'
-     *
-     * @deprecated Use Validation instead
-     */
-    public function isValidIP(string $ip, ?string $which = null): bool;
-
-    /**
-     * Get the request method.
-     * An extension of PSR-7's getMethod to allow casing.
-     *
-     * @param bool $upper Whether to return in upper or lower case.
-     *
-     * @deprecated The $upper functionality will be removed and this will revert to its PSR-7 equivalent
-     */
-    public function getMethod(bool $upper = false): string;
-
-    /**
      * Fetch an item from the $_SERVER array.
      * Supplied by RequestTrait.
      *
-     * @param string $index  Index for item to be fetched from $_SERVER
-     * @param null   $filter A filter name to be applied
+     * @param list<string>|string|null $index  Index for item to be fetched from $_SERVER
+     * @param int|null                 $filter A filter name to be applied
      *
      * @return mixed
      */

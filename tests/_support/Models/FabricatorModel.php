@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -16,26 +18,23 @@ use Faker\Generator;
 
 class FabricatorModel extends Model
 {
-    protected $table = 'job';
-
-    protected $returnType = 'object';
-
+    protected $table          = 'job';
+    protected $returnType     = 'object';
     protected $useSoftDeletes = true;
-
-    protected $useTimestamps = true;
-
-    protected $dateFormat = 'int';
-
-    protected $allowedFields = [
+    protected $useTimestamps  = true;
+    protected $dateFormat     = 'int';
+    protected $allowedFields  = [
         'name',
         'description',
     ];
 
-    // Return a faked entity
-    public function fake(Generator &$faker)
+    /**
+     * Return a faked entity
+     */
+    public function fake(Generator &$faker): object
     {
         return (object) [
-            'name'        => $faker->ipv4,
+            'name'        => $faker->ipv4(),
             'description' => $faker->words(10),
         ];
     }

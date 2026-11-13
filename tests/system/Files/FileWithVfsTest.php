@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,29 +15,27 @@ namespace CodeIgniter\Files;
 
 use CodeIgniter\Test\CIUnitTestCase;
 use org\bovigo\vfs\vfsStream;
+use org\bovigo\vfs\vfsStreamDirectory;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class FileWithVfsTest extends CIUnitTestCase
 {
     // For VFS stuff
-    protected $root;
-    protected $path;
-    protected $start;
-
-    /**
-     * @var File
-     */
-    protected $file;
+    private ?vfsStreamDirectory $root = null;
+    private string $start;
+    private File $file;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->root = vfsStream::setup();
-        $this->path = '_support/Files/';
-        vfsStream::copyFromFileSystem(TESTPATH . $this->path, $this->root);
+        $path       = '_support/Files/';
+        vfsStream::copyFromFileSystem(TESTPATH . $path, $this->root);
         $this->start = $this->root->url() . '/';
         $this->file  = new File($this->start . 'able/apple.php');
     }
@@ -47,55 +47,55 @@ final class FileWithVfsTest extends CIUnitTestCase
         $this->root = null;
     }
 
-    public function testDestinationUnknown()
+    public function testDestinationUnknown(): void
     {
         $destination = $this->start . 'charlie/cherry.php';
         $this->assertSame($destination, $this->file->getDestination($destination));
     }
 
-    public function testDestinationSameFileSameFolder()
+    public function testDestinationSameFileSameFolder(): void
     {
         $destination = $this->start . 'able/apple.php';
         $this->assertSame($this->start . 'able/apple_1.php', $this->file->getDestination($destination));
     }
 
-    public function testDestinationSameFileDifferentFolder()
+    public function testDestinationSameFileDifferentFolder(): void
     {
         $destination = $this->start . 'baker/apple.php';
         $this->assertSame($destination, $this->file->getDestination($destination));
     }
 
-    public function testDestinationDifferentFileSameFolder()
+    public function testDestinationDifferentFileSameFolder(): void
     {
         $destination = $this->start . 'able/date.php';
         $this->assertSame($destination, $this->file->getDestination($destination));
     }
 
-    public function testDestinationDifferentFileDifferentFolder()
+    public function testDestinationDifferentFileDifferentFolder(): void
     {
         $destination = $this->start . 'baker/date.php';
         $this->assertSame($destination, $this->file->getDestination($destination));
     }
 
-    public function testDestinationExistingFileDifferentFolder()
+    public function testDestinationExistingFileDifferentFolder(): void
     {
         $destination = $this->start . 'baker/banana.php';
         $this->assertSame($this->start . 'baker/banana_1.php', $this->file->getDestination($destination));
     }
 
-    public function testDestinationDelimited()
+    public function testDestinationDelimited(): void
     {
         $destination = $this->start . 'able/fig_3.php';
         $this->assertSame($this->start . 'able/fig_4.php', $this->file->getDestination($destination));
     }
 
-    public function testDestinationDelimitedAlpha()
+    public function testDestinationDelimitedAlpha(): void
     {
         $destination = $this->start . 'able/prune_ripe.php';
         $this->assertSame($this->start . 'able/prune_ripe_1.php', $this->file->getDestination($destination));
     }
 
-    public function testMoveNormal()
+    public function testMoveNormal(): void
     {
         $destination = $this->start . 'baker';
         $this->file->move($destination);
@@ -103,7 +103,7 @@ final class FileWithVfsTest extends CIUnitTestCase
         $this->assertFalse($this->root->hasChild('able/apple.php'));
     }
 
-    public function testMoveRename()
+    public function testMoveRename(): void
     {
         $destination = $this->start . 'baker';
         $this->file->move($destination, 'popcorn.php');
@@ -111,7 +111,7 @@ final class FileWithVfsTest extends CIUnitTestCase
         $this->assertFalse($this->root->hasChild('able/apple.php'));
     }
 
-    public function testMoveOverwrite()
+    public function testMoveOverwrite(): void
     {
         $destination = $this->start . 'baker';
         $this->file->move($destination, 'banana.php', true);
@@ -119,7 +119,7 @@ final class FileWithVfsTest extends CIUnitTestCase
         $this->assertFalse($this->root->hasChild('able/apple.php'));
     }
 
-    public function testMoveDontOverwrite()
+    public function testMoveDontOverwrite(): void
     {
         $destination = $this->start . 'baker';
         $this->file->move($destination, 'banana.php');
@@ -127,7 +127,7 @@ final class FileWithVfsTest extends CIUnitTestCase
         $this->assertFalse($this->root->hasChild('able/apple.php'));
     }
 
-    public function testMoveFailure()
+    public function testMoveFailure(): void
     {
         $this->expectException('Exception');
 
@@ -141,7 +141,7 @@ final class FileWithVfsTest extends CIUnitTestCase
     /**
      * @see https://github.com/codeigniter4/CodeIgniter4/issues/1782
      */
-    public function testMoveReturnsNewInstance()
+    public function testMoveReturnsNewInstance(): void
     {
         $destination = $this->start . 'baker';
         $file        = $this->file->move($destination);
@@ -149,5 +149,14 @@ final class FileWithVfsTest extends CIUnitTestCase
         $this->assertTrue($this->root->hasChild('baker/apple.php'));
         $this->assertInstanceOf(File::class, $file);
         $this->assertSame($destination . '/apple.php', $file->getPathname());
+    }
+
+    public function testMovePermissions(): void
+    {
+        $destination = $this->start . 'baker';
+        $this->file->move($destination);
+
+        $expectedPerms = 0666 & ~umask();
+        $this->assertSame($expectedPerms, $this->root->getChild('baker/apple.php')->getPermissions());
     }
 }

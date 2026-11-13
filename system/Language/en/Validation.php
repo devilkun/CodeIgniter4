@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,11 +14,11 @@
 // Validation language settings
 return [
     // Core Messages
-    'noRuleSets'      => 'No rulesets specified in Validation configuration.',
-    'ruleNotFound'    => '{0} is not a valid rule.',
-    'groupNotFound'   => '{0} is not a validation rules group.',
-    'groupNotArray'   => '{0} rule group must be an array.',
-    'invalidTemplate' => '{0} is not a valid Validation template.',
+    'noRuleSets'      => 'No rule sets specified in Validation configuration.',
+    'ruleNotFound'    => '"{0}" is not a valid rule.',
+    'groupNotFound'   => '"{0}" is not a validation rules group.',
+    'groupNotArray'   => '"{0}" rule group must be an array.',
+    'invalidTemplate' => '"{0}" is not a valid Validation template.',
 
     // Rule Messages
     'alpha'                 => 'The {field} field may only contain alphabetical characters.',
@@ -29,9 +31,10 @@ return [
     'differs'               => 'The {field} field must differ from the {param} field.',
     'equals'                => 'The {field} field must be exactly: {param}.',
     'exact_length'          => 'The {field} field must be exactly {param} characters in length.',
+    'field_exists'          => 'The {field} field must exist.',
     'greater_than'          => 'The {field} field must contain a number greater than {param}.',
     'greater_than_equal_to' => 'The {field} field must contain a number greater than or equal to {param}.',
-    'hex'                   => 'The {field} field may only contain hexidecimal characters.',
+    'hex'                   => 'The {field} field may only contain hexadecimal characters.',
     'in_list'               => 'The {field} field must be one of: {param}.',
     'integer'               => 'The {field} field must contain an integer.',
     'is_natural'            => 'The {field} field must only contain digits.',
@@ -57,10 +60,12 @@ return [
     'valid_emails'          => 'The {field} field must contain all valid email addresses.',
     'valid_ip'              => 'The {field} field must contain a valid IP.',
     'valid_url'             => 'The {field} field must contain a valid URL.',
+    'valid_url_strict'      => 'The {field} field must contain a valid URL.',
     'valid_date'            => 'The {field} field must contain a valid date.',
+    'valid_json'            => 'The {field} field must contain a valid json.',
 
     // Credit Cards
-    'valid_cc_num' => '{field} does not appear to be a valid credit card number.',
+    'valid_cc_number' => '{field} does not appear to be a valid credit card number.',
 
     // Files
     'uploaded' => '{field} is not a valid uploaded file.',
@@ -69,4 +74,5 @@ return [
     'mime_in'  => '{field} does not have a valid mime type.',
     'ext_in'   => '{field} does not have a valid file extension.',
     'max_dims' => '{field} is either not an image, or it is too wide or tall.',
+    'min_dims' => '{field} is either not an image, or it is not wide or tall enough.',
 ];

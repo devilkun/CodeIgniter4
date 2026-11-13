@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -13,36 +15,38 @@ namespace CodeIgniter\HTTP\Files;
 
 use CodeIgniter\Test\CIUnitTestCase;
 use Config\Mimes;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class FileCollectionTest extends CIUnitTestCase
 {
     protected function setUp(): void
     {
         parent::setUp();
-        $_FILES = [];
+        service('superglobals')->setFilesArray([]);
     }
 
-    public function testAllReturnsArrayWithNoFiles()
+    public function testAllReturnsArrayWithNoFiles(): void
     {
         $files = new FileCollection();
 
         $this->assertSame([], $files->all());
     }
 
-    public function testAllReturnsValidSingleFile()
+    public function testAllReturnsValidSingleFile(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name'     => 'someFile.txt',
                 'type'     => 'text/plain',
-                'size'     => '124',
+                'size'     => 124,
                 'tmp_name' => '/tmp/myTempFile.txt',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
         $files      = $collection->all();
@@ -55,9 +59,9 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertSame(124, $file->getSize());
     }
 
-    public function testAllReturnsValidMultipleFilesSameName()
+    public function testAllReturnsValidMultipleFilesSameName(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name' => [
                     'fileA.txt',
@@ -68,8 +72,8 @@ final class FileCollectionTest extends CIUnitTestCase
                     'text/csv',
                 ],
                 'size' => [
-                    '124',
-                    '248',
+                    124,
+                    248,
                 ],
                 'tmp_name' => [
                     '/tmp/fileA.txt',
@@ -77,7 +81,7 @@ final class FileCollectionTest extends CIUnitTestCase
                 ],
                 'error' => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
         $files      = $collection->all();
@@ -97,9 +101,9 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertSame(124, $file->getSize());
     }
 
-    public function testAllReturnsValidMultipleFilesDifferentName()
+    public function testAllReturnsValidMultipleFilesDifferentName(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile1' => [
                 'name'     => 'fileA.txt',
                 'type'     => 'text/plain',
@@ -114,7 +118,7 @@ final class FileCollectionTest extends CIUnitTestCase
                 'tmp_name' => '/tmp/fileB.txt',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
         $files      = $collection->all();
@@ -142,9 +146,9 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertSame(248, $file->getSize());
     }
 
-    public function testExtensionGuessing()
+    public function testExtensionGuessing(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile1' => [
                 'name'     => 'fileA.txt',
                 'type'     => 'text/plain',
@@ -180,7 +184,7 @@ final class FileCollectionTest extends CIUnitTestCase
                 'tmp_name' => SUPPORTPATH . 'HTTP/Files/tmp/fileE.zip.rar',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
@@ -194,7 +198,7 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertInstanceOf(UploadedFile::class, $file);
         $this->assertSame('txt', $file->getExtension());
         // but not client mime type
-        $this->assertNull(Mimes::guessExtensionFromType($file->getClientMimeType(), $file->getClientExtension()));
+        $this->assertSame('csv', Mimes::guessExtensionFromType($file->getClientMimeType(), $file->getClientExtension()));
 
         // proposed extension does not match finfo_open mime type (text/plain)
         // but can be resolved by reverse searching
@@ -208,22 +212,17 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertSame('zip', $file->getExtension());
 
         // proposed extension matches client mime type, but not finfo_open mime type (application/zip)
-        // this is a zip file (userFile4) but hat been renamed to 'rar'
+        // this is a zip file (userFile4) but has been renamed to 'rar'
         $file = $collection->getFile('userfile5');
         $this->assertInstanceOf(UploadedFile::class, $file);
-        // getExtension falls back to clientExtension (insecure)
-        $this->assertSame('rar', $file->getExtension());
+        $this->assertSame('zip', $file->getExtension());
         $this->assertSame('rar', Mimes::guessExtensionFromType($file->getClientMimeType(), $file->getClientExtension()));
-        // guessExtension is secure and does not returns empty
-        $this->assertSame('', $file->guessExtension());
+        $this->assertSame('zip', $file->guessExtension());
     }
 
-    /**
-     * @group single
-     */
-    public function testAllReturnsValidSingleFileNestedName()
+    public function testAllReturnsValidSingleFileNestedName(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name' => [
                     'foo' => [
@@ -247,7 +246,7 @@ final class FileCollectionTest extends CIUnitTestCase
                 ],
                 'error' => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
         $files      = $collection->all();
@@ -266,17 +265,17 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertSame(124, $file->getSize());
     }
 
-    public function testHasFileWithSingleFile()
+    public function testHasFileWithSingleFile(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name'     => 'someFile.txt',
                 'type'     => 'text/plain',
-                'size'     => '124',
+                'size'     => 124,
                 'tmp_name' => '/tmp/myTempFile.txt',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
@@ -284,9 +283,9 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertFalse($collection->hasFile('foo'));
     }
 
-    public function testHasFileWithMultipleFilesWithDifferentNames()
+    public function testHasFileWithMultipleFilesWithDifferentNames(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile1' => [
                 'name'     => 'fileA.txt',
                 'type'     => 'text/plain',
@@ -301,7 +300,7 @@ final class FileCollectionTest extends CIUnitTestCase
                 'tmp_name' => '/tmp/fileB.txt',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
@@ -309,12 +308,9 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertTrue($collection->hasFile('userfile2'));
     }
 
-    /**
-     * @group single
-     */
-    public function testHasFileWithSingleFileNestedName()
+    public function testHasFileWithSingleFileNestedName(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name' => [
                     'foo' => [
@@ -338,7 +334,7 @@ final class FileCollectionTest extends CIUnitTestCase
                 ],
                 'error' => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
@@ -347,129 +343,172 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertTrue($collection->hasFile('userfile.foo.bar'));
     }
 
-    public function testErrorString()
+    public function testErrorString(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name'     => 'someFile.txt',
                 'type'     => 'text/plain',
-                'size'     => '124',
+                'size'     => 124,
                 'tmp_name' => '/tmp/myTempFile.txt',
                 'error'    => UPLOAD_ERR_INI_SIZE,
             ],
-        ];
+        ]);
 
         $expected = 'The file "someFile.txt" exceeds your upload_max_filesize ini directive.';
 
         $collection = new FileCollection();
         $file       = $collection->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
 
         $this->assertSame($expected, $file->getErrorString());
     }
 
-    public function testErrorStringWithUnknownError()
+    public function testErrorStringWithUnknownError(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name'     => 'someFile.txt',
                 'type'     => 'text/plain',
-                'size'     => '124',
+                'size'     => 124,
                 'tmp_name' => '/tmp/myTempFile.txt',
                 'error'    => 123,
             ],
-        ];
+        ]);
 
         $expected = 'The file "someFile.txt" was not uploaded due to an unknown error.';
 
         $collection = new FileCollection();
         $file       = $collection->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
 
         $this->assertSame($expected, $file->getErrorString());
     }
 
-    public function testErrorStringWithNoError()
+    public function testErrorStringWithNoError(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name'     => 'someFile.txt',
                 'type'     => 'text/plain',
-                'size'     => '124',
+                'size'     => 124,
                 'tmp_name' => '/tmp/myTempFile.txt',
             ],
-        ];
+        ]);
 
         $expected = 'The file uploaded with success.';
 
         $collection = new FileCollection();
         $file       = $collection->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
 
         $this->assertSame($expected, $file->getErrorString());
     }
 
-    public function testError()
+    public function testError(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name'     => 'someFile.txt',
                 'type'     => 'text/plain',
-                'size'     => '124',
+                'size'     => 124,
                 'tmp_name' => '/tmp/myTempFile.txt',
                 'error'    => UPLOAD_ERR_INI_SIZE,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
         $file       = $collection->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
 
         $this->assertSame(UPLOAD_ERR_INI_SIZE, $file->getError());
     }
 
-    public function testErrorWithUnknownError()
+    public function testErrorWithUnknownError(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name'     => 'someFile.txt',
                 'type'     => 'text/plain',
-                'size'     => '124',
+                'size'     => 124,
                 'tmp_name' => '/tmp/myTempFile.txt',
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
         $file       = $collection->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
 
         $this->assertSame(0, $file->getError());
     }
 
-    public function testErrorWithNoError()
+    public function testErrorWithNoError(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name'     => 'someFile.txt',
                 'type'     => 'text/plain',
-                'size'     => '124',
+                'size'     => 124,
                 'tmp_name' => '/tmp/myTempFile.txt',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
         $file       = $collection->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
 
         $this->assertSame(UPLOAD_ERR_OK, $file->getError());
     }
 
-    public function testFileReturnsValidSingleFile()
+    public function testClientPathReturnsValidFullPath(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
+            'userfile' => [
+                'name'      => 'someFile.txt',
+                'type'      => 'text/plain',
+                'size'      => 124,
+                'tmp_name'  => '/tmp/myTempFile.txt',
+                'full_path' => 'someDir/someFile.txt',
+            ],
+        ]);
+
+        $collection = new FileCollection();
+        $file       = $collection->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
+
+        $this->assertSame('someDir/someFile.txt', $file->getClientPath());
+    }
+
+    public function testClientPathReturnsNullWhenFullPathIsNull(): void
+    {
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name'     => 'someFile.txt',
                 'type'     => 'text/plain',
-                'size'     => '124',
+                'size'     => 124,
+                'tmp_name' => '/tmp/myTempFile.txt',
+            ],
+        ]);
+
+        $collection = new FileCollection();
+        $file       = $collection->getFile('userfile');
+        $this->assertInstanceOf(UploadedFile::class, $file);
+
+        $this->assertNull($file->getClientPath());
+    }
+
+    public function testFileReturnsValidSingleFile(): void
+    {
+        service('superglobals')->setFilesArray([
+            'userfile' => [
+                'name'     => 'someFile.txt',
+                'type'     => 'text/plain',
+                'size'     => 124,
                 'tmp_name' => '/tmp/myTempFile.txt',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
         $file       = $collection->getFile('userfile');
@@ -479,26 +518,26 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertSame(124, $file->getSize());
     }
 
-    public function testFileNoExistSingleFile()
+    public function testFileNoExistSingleFile(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name'     => 'someFile.txt',
                 'type'     => 'text/plain',
-                'size'     => '124',
+                'size'     => 124,
                 'tmp_name' => '/tmp/myTempFile.txt',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
         $file       = $collection->getFile('fileuser');
-        $this->AssertNull($file);
+        $this->assertNotInstanceOf(UploadedFile::class, $file);
     }
 
-    public function testFileReturnValidMultipleFiles()
+    public function testFileReturnValidMultipleFiles(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name' => [
                     'fileA.txt',
@@ -509,8 +548,8 @@ final class FileCollectionTest extends CIUnitTestCase
                     'text/csv',
                 ],
                 'size' => [
-                    '124',
-                    '248',
+                    124,
+                    248,
                 ],
                 'tmp_name' => [
                     '/tmp/fileA.txt',
@@ -518,7 +557,7 @@ final class FileCollectionTest extends CIUnitTestCase
                 ],
                 'error' => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
@@ -539,9 +578,9 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertSame(248, $file2->getSize());
     }
 
-    public function testFileWithMultipleFilesNestedName()
+    public function testFileWithMultipleFilesNestedName(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'my-form' => [
                 'name' => [
                     'details' => [
@@ -584,7 +623,7 @@ final class FileCollectionTest extends CIUnitTestCase
                     ],
                 ],
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
@@ -605,9 +644,9 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertSame(243, $file2->getSize());
     }
 
-    public function testDoesntHaveFile()
+    public function testDoesntHaveFile(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'my-form' => [
                 'name' => [
                     'details' => [
@@ -650,17 +689,17 @@ final class FileCollectionTest extends CIUnitTestCase
                     ],
                 ],
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
         $this->assertFalse($collection->hasFile('my-form.detailz.avatars.0'));
-        $this->assertNull($collection->getFile('my-form.detailz.avatars.0'));
+        $this->assertNotInstanceOf(UploadedFile::class, $collection->getFile('my-form.detailz.avatars.0'));
     }
 
-    public function testGetFileMultipleHasNoFile()
+    public function testGetFileMultipleHasNoFile(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name' => [
                     'fileA.txt',
@@ -671,8 +710,8 @@ final class FileCollectionTest extends CIUnitTestCase
                     'text/csv',
                 ],
                 'size' => [
-                    '124',
-                    '248',
+                    124,
+                    248,
                 ],
                 'tmp_name' => [
                     '/tmp/fileA.txt',
@@ -680,7 +719,7 @@ final class FileCollectionTest extends CIUnitTestCase
                 ],
                 'error' => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
@@ -689,9 +728,9 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertNull($files);
     }
 
-    public function testGetFileMultipleReturnValidDotNotationSyntax()
+    public function testGetFileMultipleReturnValidDotNotationSyntax(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'my-form' => [
                 'name' => [
                     'details' => [
@@ -734,7 +773,7 @@ final class FileCollectionTest extends CIUnitTestCase
                     ],
                 ],
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
@@ -757,9 +796,9 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertSame(243, $files[1]->getSize());
     }
 
-    public function testGetFileMultipleReturnInvalidDotNotationSyntax()
+    public function testGetFileMultipleReturnInvalidDotNotationSyntax(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'my-form' => [
                 'name' => [
                     'details' => [
@@ -787,7 +826,7 @@ final class FileCollectionTest extends CIUnitTestCase
                     ],
                 ],
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
@@ -795,9 +834,9 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertNull($files);
     }
 
-    public function testGetFileMultipleReturnValidMultipleFiles()
+    public function testGetFileMultipleReturnValidMultipleFiles(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name' => [
                     'fileA.txt',
@@ -808,8 +847,8 @@ final class FileCollectionTest extends CIUnitTestCase
                     'text/csv',
                 ],
                 'size' => [
-                    '124',
-                    '248',
+                    124,
+                    248,
                 ],
                 'tmp_name' => [
                     '/tmp/fileA.txt',
@@ -817,7 +856,7 @@ final class FileCollectionTest extends CIUnitTestCase
                 ],
                 'error' => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 
@@ -840,17 +879,17 @@ final class FileCollectionTest extends CIUnitTestCase
         $this->assertSame('text/csv', $files[1]->getClientMimeType());
     }
 
-    public function testGetFileMultipleReturnInvalidSingleFile()
+    public function testGetFileMultipleReturnInvalidSingleFile(): void
     {
-        $_FILES = [
+        service('superglobals')->setFilesArray([
             'userfile' => [
                 'name'     => 'fileA.txt',
                 'type'     => 'text/csv',
-                'size'     => '248',
+                'size'     => 248,
                 'tmp_name' => '/tmp/fileA.txt',
                 'error'    => 0,
             ],
-        ];
+        ]);
 
         $collection = new FileCollection();
 

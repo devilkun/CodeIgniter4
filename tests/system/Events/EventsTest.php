@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,10 +16,16 @@ namespace CodeIgniter\Events;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\Mock\MockEvents;
 use Config\Modules;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use PHPUnit\Framework\Attributes\WithoutErrorHandler;
+use stdClass;
 
 /**
  * @internal
  */
+#[Group('SeparateProcess')]
 final class EventsTest extends CIUnitTestCase
 {
     /**
@@ -25,8 +33,9 @@ final class EventsTest extends CIUnitTestCase
      *
      * @var MockEvents
      */
-    protected $manager;
+    private Events $manager;
 
+    #[WithoutErrorHandler]
     protected function setUp(): void
     {
         parent::setUp();
@@ -41,41 +50,37 @@ final class EventsTest extends CIUnitTestCase
         Events::simulate(false);
     }
 
-    /**
-     * @runInSeparateProcess
-     * @preserveGlobalState  disabled
-     */
-    public function testInitialize()
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    public function testInitialize(): void
     {
-        /**
-         * @var Modules $config
-         */
-        $config          = config('Modules');
+        $config          = new Modules();
         $config->aliases = [];
 
         // it should start out empty
         MockEvents::setFiles([]);
-        $this->assertEmpty($this->manager->getFiles());
+        $this->assertEmpty(Events::getFiles());
 
         // make sure we have a default events file
         $default = [APPPATH . 'Config' . DIRECTORY_SEPARATOR . 'Events.php'];
         $this->manager->unInitialize();
         MockEvents::initialize();
-        $this->assertSame($default, $this->manager->getFiles());
+        $this->assertSame($default, Events::getFiles());
 
         // but we should be able to change it through the backdoor
         MockEvents::setFiles(['/peanuts']);
-        $this->assertSame(['/peanuts'], $this->manager->getFiles());
+        $files = Events::getFiles();
+        $this->assertSame(['/peanuts'], $files);
 
         // re-initializing should have no effect
         MockEvents::initialize();
-        $this->assertSame(['/peanuts'], $this->manager->getFiles());
+        $this->assertSame(['/peanuts'], Events::getFiles());
     }
 
-    public function testPerformance()
+    public function testPerformance(): void
     {
         $result = null;
-        Events::on('foo', static function ($arg) use (&$result) {
+        Events::on('foo', static function ($arg) use (&$result): void {
             $result = $arg;
         });
         Events::trigger('foo', 'bar');
@@ -85,24 +90,24 @@ final class EventsTest extends CIUnitTestCase
         $this->assertGreaterThan(0, count($logged));
     }
 
-    public function testListeners()
+    public function testListeners(): void
     {
-        $callback1 = static function () {
+        $callback1 = static function (): void {
         };
-        $callback2 = static function () {
+        $callback2 = static function (): void {
         };
 
-        Events::on('foo', $callback1, EVENT_PRIORITY_HIGH);
-        Events::on('foo', $callback2, EVENT_PRIORITY_NORMAL);
+        Events::on('foo', $callback1, Events::PRIORITY_HIGH);
+        Events::on('foo', $callback2, Events::PRIORITY_NORMAL);
 
         $this->assertSame([$callback1, $callback2], Events::listeners('foo'));
     }
 
-    public function testHandleEvent()
+    public function testHandleEvent(): void
     {
         $result = null;
 
-        Events::on('foo', static function ($arg) use (&$result) {
+        Events::on('foo', static function ($arg) use (&$result): void {
             $result = $arg;
         });
 
@@ -111,18 +116,18 @@ final class EventsTest extends CIUnitTestCase
         $this->assertSame('bar', $result);
     }
 
-    public function testCancelEvent()
+    public function testCancelEvent(): void
     {
         $result = 0;
 
         // This should cancel the flow of events, and leave
         // $result = 1.
-        Events::on('foo', static function ($arg) use (&$result) {
+        Events::on('foo', static function ($arg) use (&$result): bool {
             $result = 1;
 
             return false;
         });
-        Events::on('foo', static function ($arg) use (&$result) {
+        Events::on('foo', static function ($arg) use (&$result): void {
             $result = 2;
         });
 
@@ -130,44 +135,44 @@ final class EventsTest extends CIUnitTestCase
         $this->assertSame(1, $result);
     }
 
-    public function testPriority()
+    public function testPriority(): void
     {
         $result = 0;
 
-        Events::on('foo', static function () use (&$result) {
+        Events::on('foo', static function () use (&$result): bool {
             $result = 1;
 
             return false;
-        }, EVENT_PRIORITY_NORMAL);
+        }, Events::PRIORITY_NORMAL);
         // Since this has a higher priority, it will
         // run first.
-        Events::on('foo', static function () use (&$result) {
+        Events::on('foo', static function () use (&$result): bool {
             $result = 2;
 
             return false;
-        }, EVENT_PRIORITY_HIGH);
+        }, Events::PRIORITY_HIGH);
 
         $this->assertFalse(Events::trigger('foo', 'bar'));
         $this->assertSame(2, $result);
     }
 
-    public function testPriorityWithMultiple()
+    public function testPriorityWithMultiple(): void
     {
         $result = [];
 
-        Events::on('foo', static function () use (&$result) {
+        Events::on('foo', static function () use (&$result): void {
             $result[] = 'a';
-        }, EVENT_PRIORITY_NORMAL);
+        }, Events::PRIORITY_NORMAL);
 
-        Events::on('foo', static function () use (&$result) {
+        Events::on('foo', static function () use (&$result): void {
             $result[] = 'b';
-        }, EVENT_PRIORITY_LOW);
+        }, Events::PRIORITY_LOW);
 
-        Events::on('foo', static function () use (&$result) {
+        Events::on('foo', static function () use (&$result): void {
             $result[] = 'c';
-        }, EVENT_PRIORITY_HIGH);
+        }, Events::PRIORITY_HIGH);
 
-        Events::on('foo', static function () use (&$result) {
+        Events::on('foo', static function () use (&$result): void {
             $result[] = 'd';
         }, 75);
 
@@ -175,72 +180,77 @@ final class EventsTest extends CIUnitTestCase
         $this->assertSame(['c', 'd', 'a', 'b'], $result);
     }
 
-    public function testRemoveListener()
+    public function testRemoveListener(): void
     {
-        $result = false;
+        $user = $this->getEditableObject();
 
-        $callback = static function () use (&$result) {
-            $result = true;
+        $callback = static function () use (&$user): void {
+            $user->name = 'Boris';
+            $user->age  = 40;
         };
 
         Events::on('foo', $callback);
 
-        Events::trigger('foo');
-        $this->assertTrue($result);
+        $this->assertTrue(Events::trigger('foo'));
+        $this->assertSame('Boris', $user->name);
 
-        $result = false;
+        $user = $this->getEditableObject();
+
         $this->assertTrue(Events::removeListener('foo', $callback));
 
-        Events::trigger('foo');
-        $this->assertFalse($result);
+        $this->assertTrue(Events::trigger('foo'));
+        $this->assertSame('Ivan', $user->name);
     }
 
-    public function testRemoveListenerTwice()
+    public function testRemoveListenerTwice(): void
     {
-        $result = false;
+        $user = $this->getEditableObject();
 
-        $callback = static function () use (&$result) {
-            $result = true;
+        $callback = static function () use (&$user): void {
+            $user->name = 'Boris';
+            $user->age  = 40;
         };
 
         Events::on('foo', $callback);
 
-        Events::trigger('foo');
-        $this->assertTrue($result);
+        $this->assertTrue(Events::trigger('foo'));
+        $this->assertSame('Boris', $user->name);
 
-        $result = false;
+        $user = $this->getEditableObject();
+
         $this->assertTrue(Events::removeListener('foo', $callback));
         $this->assertFalse(Events::removeListener('foo', $callback));
 
-        Events::trigger('foo');
-        $this->assertFalse($result);
+        $this->assertTrue(Events::trigger('foo'));
+        $this->assertSame('Ivan', $user->name);
     }
 
-    public function testRemoveUnknownListener()
+    public function testRemoveUnknownListener(): void
     {
-        $result = false;
+        $user = $this->getEditableObject();
 
-        $callback = static function () use (&$result) {
-            $result = true;
+        $callback = static function () use (&$user): void {
+            $user->name = 'Boris';
+            $user->age  = 40;
         };
 
         Events::on('foo', $callback);
 
-        Events::trigger('foo');
-        $this->assertTrue($result);
+        $this->assertTrue(Events::trigger('foo'));
+        $this->assertSame('Boris', $user->name);
 
-        $result = false;
+        $user = $this->getEditableObject();
+
         $this->assertFalse(Events::removeListener('bar', $callback));
-
-        Events::trigger('foo');
-        $this->assertTrue($result);
+        $this->assertTrue(Events::trigger('foo'));
+        $this->assertSame('Boris', $user->name);
     }
 
-    public function testRemoveAllListenersWithSingleEvent()
+    public function testRemoveAllListenersWithSingleEvent(): void
     {
         $result = false;
 
-        $callback = static function () use (&$result) {
+        $callback = static function () use (&$result): void {
             $result = true;
         };
 
@@ -253,11 +263,11 @@ final class EventsTest extends CIUnitTestCase
         $this->assertSame([], $listeners);
     }
 
-    public function testRemoveAllListenersWithMultipleEvents()
+    public function testRemoveAllListenersWithMultipleEvents(): void
     {
         $result = false;
 
-        $callback = static function () use (&$result) {
+        $callback = static function () use (&$result): void {
             $result = true;
         };
 
@@ -271,36 +281,36 @@ final class EventsTest extends CIUnitTestCase
     }
 
     // Basically if it doesn't crash this should be good...
-    public function testHandleEventCallableInternalFunc()
+    public function testHandleEventCallableInternalFunc(): void
     {
         Events::on('foo', 'strlen');
 
         $this->assertTrue(Events::trigger('foo', 'bar'));
     }
 
-    public function testHandleEventCallableClass()
+    public function testHandleEventCallableClass(): void
     {
         $box = new class () {
-            public $logged;
+            public string $logged;
 
-            public function hold(string $value)
+            public function hold(string $value): void
             {
                 $this->logged = $value;
             }
         };
 
-        Events::on('foo', [$box, 'hold']);
+        Events::on('foo', $box->hold(...));
 
         $this->assertTrue(Events::trigger('foo', 'bar'));
 
         $this->assertSame('bar', $box->logged);
     }
 
-    public function testSimulate()
+    public function testSimulate(): void
     {
         $result = 0;
 
-        $callback = static function () use (&$result) {
+        $callback = static function () use (&$result): void {
             $result += 2;
         };
 
@@ -310,5 +320,28 @@ final class EventsTest extends CIUnitTestCase
         Events::trigger('foo');
 
         $this->assertSame(0, $result);
+    }
+
+    private function getEditableObject(): stdClass
+    {
+        $user       = new stdClass();
+        $user->name = 'Ivan';
+        $user->age  = 30;
+
+        return clone $user;
+    }
+
+    public function testResetForWorkerMode(): void
+    {
+        Events::on('test', static fn (): null => null);
+        Events::trigger('test');
+
+        $performanceLog = Events::getPerformanceLogs();
+        $this->assertNotEmpty($performanceLog);
+
+        Events::cleanupForWorkerMode();
+
+        $performanceLog = Events::getPerformanceLogs();
+        $this->assertEmpty($performanceLog);
     }
 }

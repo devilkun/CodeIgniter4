@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,22 +14,28 @@
 namespace CodeIgniter\Validation;
 
 use CodeIgniter\Test\CIUnitTestCase;
-use Config\Services;
+use Generator;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\Support\Validation\TestRules;
 
 /**
  * @internal
+ *
+ * @no-final
  */
-final class FormatRulesTest extends CIUnitTestCase
+#[Group('Others')]
+class FormatRulesTest extends CIUnitTestCase
 {
     public const ALPHABET     = 'abcdefghijklmnopqrstuvwxyzABCDEFGHLIJKLMNOPQRSTUVWXYZ';
     public const ALPHANUMERIC = 'abcdefghijklmnopqrstuvwxyzABCDEFGHLIJKLMNOPQRSTUVWXYZ0123456789';
 
+    protected Validation $validation;
+
     /**
-     * @var Validation
+     * @var array<string, array<array-key, array<string, string>|string>>
      */
-    protected $validation;
-    protected $config = [
+    protected array $config = [
         'ruleSets' => [
             Rules::class,
             FormatRules::class,
@@ -48,13 +56,11 @@ final class FormatRulesTest extends CIUnitTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->validation = new Validation((object) $this->config, Services::renderer());
+        $this->validation = new Validation((object) $this->config, service('renderer'));
         $this->validation->reset();
-
-        $_FILES = [];
     }
 
-    public function testRegexMatch()
+    public function testRegexMatch(): void
     {
         $data = [
             'foo'   => 'abcde',
@@ -69,7 +75,7 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertTrue($this->validation->run($data));
     }
 
-    public function testRegexMatchFalse()
+    public function testRegexMatchFalse(): void
     {
         $data = [
             'foo'   => 'abcde',
@@ -85,9 +91,49 @@ final class FormatRulesTest extends CIUnitTestCase
     }
 
     /**
-     * @dataProvider urlProvider
+     * @see https://github.com/codeigniter4/CodeIgniter4/issues/9596
      */
-    public function testValidURL(?string $url, bool $expected)
+    public function testRegexMatchWithArrayData(): void
+    {
+        $data = [
+            ['uid' => '2025/06/000001'],
+            ['uid' => '2025/06/000002'],
+            ['uid' => '2025/06/000003'],
+            ['uid' => '2025/06/000004'],
+            ['uid' => '2025/06/000005'],
+        ];
+
+        $this->validation->setRules([
+            '*.uid' => 'regex_match[/^(\d{4})\/(0[1-9]|1[0-2])\/\d{6}$/]',
+        ]);
+
+        $this->assertTrue($this->validation->run($data));
+    }
+
+    public function testRegexMatchWithPlaceholder(): void
+    {
+        $data = [
+            'code'       => 'ABC1234',
+            'phone'      => '1234567890',
+            'prefix'     => 'ABC',
+            'min_digits' => 10,
+            'max_digits' => 15,
+        ];
+
+        $this->validation->setRules([
+            'prefix'     => 'required|string',
+            'min_digits' => 'required|integer',
+            'max_digits' => 'required|integer',
+            'code'       => 'required|regex_match[/^{{prefix}}\d{4}$/]',
+            'phone'      => 'required|regex_match[/^\d{{{min_digits}},{{max_digits}}}$/]',
+        ]);
+
+        $result = $this->validation->run($data);
+        $this->assertTrue($result);
+    }
+
+    #[DataProvider('provideValidUrl')]
+    public function testValidURL(?string $url, bool $isLoose, bool $isStrict): void
     {
         $data = [
             'foo' => $url,
@@ -97,80 +143,140 @@ final class FormatRulesTest extends CIUnitTestCase
             'foo' => 'valid_url',
         ]);
 
-        $this->assertSame($expected, $this->validation->run($data));
+        $this->assertSame($isLoose, $this->validation->run($data));
     }
 
-    public function urlProvider()
+    #[DataProvider('provideValidUrl')]
+    public function testValidURLStrict(?string $url, bool $isLoose, bool $isStrict): void
     {
-        return [
+        $data = [
+            'foo' => $url,
+        ];
+
+        $this->validation->setRules([
+            'foo' => 'valid_url_strict',
+        ]);
+
+        $this->assertSame($isStrict, $this->validation->run($data));
+    }
+
+    /**
+     * @return iterable<array{string|null, bool, bool}>
+     */
+    public static function provideValidUrl(): iterable
+    {
+        yield from [
             [
                 'www.codeigniter.com',
                 true,
+                false,
             ],
             [
                 'http://codeigniter.com',
                 true,
+                true,
             ],
-            //https://bugs.php.net/bug.php?id=51192
+            // https://bugs.php.net/bug.php?id=51192
             [
                 'http://accept-dashes.tld',
+                true,
                 true,
             ],
             [
                 'http://reject_underscores',
                 false,
+                false,
             ],
-            // https://github.com/codeigniter4/CodeIgniter/issues/4415
+            // https://github.com/bcit-ci/CodeIgniter/issues/4415
             [
                 'http://[::1]/ipv6',
+                true,
                 true,
             ],
             [
                 'htt://www.codeigniter.com',
                 false,
+                false,
             ],
             [
                 '',
+                false,
+                false,
+            ],
+            // https://github.com/codeigniter4/CodeIgniter4/issues/3156
+            [
+                'codeigniter',
+                true,   // What?
                 false,
             ],
             [
                 'code igniter',
                 false,
+                false,
             ],
             [
                 null,
                 false,
+                false,
             ],
             [
                 'http://',
-                true,
-            ], // this is apparently valid!
+                true,   // Why?
+                false,
+            ],
             [
                 'http:///oops.com',
+                false,
                 false,
             ],
             [
                 '123.com',
                 true,
+                false,
             ],
             [
                 'abc.123',
                 true,
+                false,
             ],
             [
                 'http:8080//abc.com',
+                true,   // Insane?
+                false,
+            ],
+            [
+                'mailto:support@codeigniter.com',
                 true,
+                false,
+            ],
+            [
+                '//example.com',
+                false,
+                false,
+            ],
+            [
+                "http://www.codeigniter.com\n",
+                false,
+                false,
             ],
         ];
     }
 
-    /**
-     * @dataProvider emailProviderSingle
-     *
-     * @param $email
-     * @param $expected
-     */
-    public function testValidEmail($email, $expected)
+    public function testValidURLStrictWithSchema(): void
+    {
+        $data = [
+            'foo' => 'http://www.codeigniter.com',
+        ];
+
+        $this->validation->setRules([
+            'foo' => 'valid_url_strict[https]',
+        ]);
+
+        $this->assertFalse($this->validation->run($data));
+    }
+
+    #[DataProvider('provideValidEmail')]
+    public function testValidEmail(?string $email, bool $expected): void
     {
         $data = [
             'foo' => $email,
@@ -184,27 +290,11 @@ final class FormatRulesTest extends CIUnitTestCase
     }
 
     /**
-     * @dataProvider emailsProvider
-     *
-     * @param $email
-     * @param $expected
+     * @return iterable<array{string|null, bool}>
      */
-    public function testValidEmails($email, $expected)
+    public static function provideValidEmail(): iterable
     {
-        $data = [
-            'foo' => $email,
-        ];
-
-        $this->validation->setRules([
-            'foo' => 'valid_emails',
-        ]);
-
-        $this->assertSame($expected, $this->validation->run($data));
-    }
-
-    public function emailProviderSingle()
-    {
-        return [
+        yield from [
             [
                 'email@sample.com',
                 true,
@@ -220,9 +310,26 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    public function emailsProvider()
+    #[DataProvider('provideValidEmails')]
+    public function testValidEmails(?string $email, bool $expected): void
     {
-        return [
+        $data = [
+            'foo' => $email,
+        ];
+
+        $this->validation->setRules([
+            'foo' => 'valid_emails',
+        ]);
+
+        $this->assertSame($expected, $this->validation->run($data));
+    }
+
+    /**
+     * @return iterable<array{string|null, bool}>
+     */
+    public static function provideValidEmails(): iterable
+    {
+        yield from [
             [
                 '1@sample.com,2@sample.com',
                 true,
@@ -250,14 +357,8 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider ipProvider
-     *
-     * @param $ip
-     * @param $which
-     * @param $expected
-     */
-    public function testValidIP($ip, $which, $expected)
+    #[DataProvider('provideValidIP')]
+    public function testValidIP(?string $ip, ?string $which, bool $expected): void
     {
         $data = [
             'foo' => $ip,
@@ -270,9 +371,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function ipProvider()
+    /**
+     * @return iterable<array{string|null, string|null, bool}>
+     */
+    public static function provideValidIP(): iterable
     {
-        return [
+        yield from [
             [
                 '127.0.0.1',
                 null,
@@ -322,12 +426,10 @@ final class FormatRulesTest extends CIUnitTestCase
     }
 
     /**
-     * @dataProvider stringProvider
-     *
-     * @param $str
-     * @param $expected
+     * @param int|string $str
      */
-    public function testString($str, $expected)
+    #[DataProvider('provideString')]
+    public function testString($str, bool $expected): void
     {
         $data = [
             'foo' => $str,
@@ -340,9 +442,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function stringProvider()
+    /**
+     * @return iterable<array{int|string, bool}>
+     */
+    public static function provideString(): iterable
     {
-        return [
+        yield from [
             [
                 '123',
                 true,
@@ -358,13 +463,8 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider alphaProvider
-     *
-     * @param $str
-     * @param $expected
-     */
-    public function testAlpha($str, $expected)
+    #[DataProvider('provideAlpha')]
+    public function testAlpha(?string $str, bool $expected): void
     {
         $data = [
             'foo' => $str,
@@ -377,9 +477,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function alphaProvider()
+    /**
+     * @return iterable<array{int|string, bool}>
+     */
+    public static function provideAlpha(): iterable
     {
-        return [
+        yield from [
             [
                 self::ALPHABET,
                 true,
@@ -403,15 +506,8 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * Test alpha with spaces.
-     *
-     * @param mixed $value    Value.
-     * @param bool  $expected Expected.
-     *
-     * @dataProvider alphaSpaceProvider
-     */
-    public function testAlphaSpace($value, $expected)
+    #[DataProvider('provideAlphaSpace')]
+    public function testAlphaSpace(?string $value, bool $expected): void
     {
         $data = [
             'foo' => $value,
@@ -424,9 +520,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function alphaSpaceProvider()
+    /**
+     * @return iterable<array{string|null, bool}>
+     */
+    public static function provideAlphaSpace(): iterable
     {
-        return [
+        yield from [
             [
                 null,
                 true,
@@ -454,13 +553,8 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider alphaNumericProvider
-     *
-     * @param $str
-     * @param $expected
-     */
-    public function testAlphaNumeric($str, $expected)
+    #[DataProvider('alphaNumericProvider')]
+    public function testAlphaNumeric(?string $str, bool $expected): void
     {
         $data = [
             'foo' => $str,
@@ -473,9 +567,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function alphaNumericProvider()
+    /**
+     * @return iterable<array{string|null, bool}>
+     */
+    public static function alphaNumericProvider(): iterable
     {
-        return [
+        yield from [
             [
                 self::ALPHANUMERIC,
                 true,
@@ -495,13 +592,8 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider alphaNumericPunctProvider
-     *
-     * @param $str
-     * @param $expected
-     */
-    public function testAlphaNumericPunct($str, $expected)
+    #[DataProvider('provideAlphaNumericPunct')]
+    public function testAlphaNumericPunct(?string $str, bool $expected): void
     {
         $data = [
             'foo' => $str,
@@ -514,9 +606,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function alphaNumericPunctProvider()
+    /**
+     * @return iterable<array{string|null, bool}>
+     */
+    public static function provideAlphaNumericPunct(): iterable
     {
-        return [
+        yield from [
             [
                 self::ALPHANUMERIC . ' ~!#$%&*-_+=|:.',
                 true,
@@ -592,13 +687,8 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider alphaNumericProvider
-     *
-     * @param $str
-     * @param $expected
-     */
-    public function testAlphaNumericSpace($str, $expected)
+    #[DataProvider('alphaNumericProvider')]
+    public function testAlphaNumericSpace(?string $str, bool $expected): void
     {
         $data = [
             'foo' => $str,
@@ -611,9 +701,9 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function alphaNumericSpaceProvider()
+    public function alphaNumericSpaceProvider(): Generator
     {
-        return [
+        yield from [
             [
                 ' ' . self::ALPHANUMERIC,
                 true,
@@ -633,13 +723,8 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider alphaDashProvider
-     *
-     * @param $str
-     * @param $expected
-     */
-    public function testAlphaDash($str, $expected)
+    #[DataProvider('provideAlphaDash')]
+    public function testAlphaDash(?string $str, bool $expected): void
     {
         $data = [
             'foo' => $str,
@@ -652,9 +737,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function alphaDashProvider()
+    /**
+     * @return iterable<array{string|null, bool}>
+     */
+    public static function provideAlphaDash(): iterable
     {
-        return [
+        yield from [
             [
                 self::ALPHANUMERIC . '-',
                 true,
@@ -674,13 +762,8 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider hexProvider
-     *
-     * @param $str
-     * @param $expected
-     */
-    public function testHex($str, $expected)
+    #[DataProvider('provideHex')]
+    public function testHex(?string $str, bool $expected): void
     {
         $data = [
             'foo' => $str,
@@ -693,9 +776,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function hexProvider()
+    /**
+     * @return iterable<array{string|null, bool}>
+     */
+    public static function provideHex(): iterable
     {
-        return [
+        yield from [
             [
                 'abcdefABCDEF0123456789',
                 true,
@@ -715,13 +801,8 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider numericProvider
-     *
-     * @param $str
-     * @param $expected
-     */
-    public function testNumeric($str, $expected)
+    #[DataProvider('provideNumeric')]
+    public function testNumeric(?string $str, bool $expected): void
     {
         $data = [
             'foo' => $str,
@@ -734,9 +815,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function numericProvider()
+    /**
+     * @return iterable<array{string|null, bool}>
+     */
+    public static function provideNumeric(): iterable
     {
-        return [
+        yield from [
             [
                 '0',
                 true,
@@ -773,12 +857,76 @@ final class FormatRulesTest extends CIUnitTestCase
     }
 
     /**
-     * @dataProvider integerProvider
+     * @see https://github.com/codeigniter4/CodeIgniter4/issues/5374
      *
-     * @param $str
-     * @param $expected
+     * @param mixed $value
      */
-    public function testInteger($str, $expected)
+    #[DataProvider('provideInvalidIntegerType')]
+    public function testIntegerWithInvalidTypeData($value, bool $expected): void
+    {
+        $this->validation->setRules([
+            'foo' => 'integer',
+        ]);
+
+        $data = [
+            'foo' => $value,
+        ];
+        $this->assertSame($expected, $this->validation->run($data));
+    }
+
+    /**
+     * @see https://github.com/codeigniter4/CodeIgniter4/issues/5374
+     *
+     * @param mixed $value
+     */
+    #[DataProvider('provideInvalidIntegerType')]
+    public function testNumericWithInvalidTypeData($value, bool $expected): void
+    {
+        $this->validation->setRules([
+            'foo' => 'numeric',
+        ]);
+
+        $data = [
+            'foo' => $value,
+        ];
+        $this->assertSame($expected, $this->validation->run($data));
+    }
+
+    /**
+     * @return iterable<array{mixed, bool}>
+     */
+    public static function provideInvalidIntegerType(): iterable
+    {
+        // TypeError : CodeIgniter\Validation\FormatRules::integer(): Argument #1 ($str) must be of type ?string, array given
+        // yield 'array with int' => [
+        // [555],
+        // false,
+        // ];
+
+        // TypeError : CodeIgniter\Validation\FormatRules::integer(): Argument #1 ($str) must be of type ?string, array given
+        // yield 'empty array' => [
+        // [],
+        // false,
+        // ];
+
+        yield 'bool true' => [
+            true,
+            true,  // incorrect
+        ];
+
+        yield 'bool false' => [
+            false,
+            false,
+        ];
+
+        yield 'null' => [
+            null,
+            false,
+        ];
+    }
+
+    #[DataProvider('provideInteger')]
+    public function testInteger(?string $str, bool $expected): void
     {
         $data = [
             'foo' => $str,
@@ -791,9 +939,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function integerProvider()
+    /**
+     * @return iterable<array{string|null, bool}>
+     */
+    public static function provideInteger(): iterable
     {
-        return [
+        yield from [
             [
                 '0',
                 true,
@@ -829,13 +980,8 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider decimalProvider
-     *
-     * @param $str
-     * @param $expected
-     */
-    public function testDecimal($str, $expected)
+    #[DataProvider('provideDecimal')]
+    public function testDecimal(?string $str, bool $expected): void
     {
         $data = [
             'foo' => $str,
@@ -848,9 +994,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function decimalProvider()
+    /**
+     * @return iterable<array{string|null, bool}>
+     */
+    public static function provideDecimal(): iterable
     {
-        return [
+        yield from [
             [
                 '1.0',
                 true,
@@ -890,17 +1039,11 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider naturalProvider
-     *
-     * @param $str
-     * @param $expected
-     * @param mixed $first
-     */
-    public function testNatural($first, $expected)
+    #[DataProvider('provideNatural')]
+    public function testNatural(?string $str, bool $expected): void
     {
         $data = [
-            'foo' => $first,
+            'foo' => $str,
         ];
 
         $this->validation->setRules([
@@ -910,9 +1053,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function naturalProvider()
+    /**
+     * @return iterable<array{string|null, bool}>
+     */
+    public static function provideNatural(): iterable
     {
-        return [
+        yield from [
             [
                 '0',
                 true,
@@ -936,17 +1082,11 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider naturalZeroProvider
-     *
-     * @param $str
-     * @param $expected
-     * @param mixed $first
-     */
-    public function testNaturalNoZero($first, $expected)
+    #[DataProvider('provideNaturalNoZero')]
+    public function testNaturalNoZero(?string $str, bool $expected): void
     {
         $data = [
-            'foo' => $first,
+            'foo' => $str,
         ];
 
         $this->validation->setRules([
@@ -956,9 +1096,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function naturalZeroProvider()
+    /**
+     * @return iterable<array{string|null, bool}>
+     */
+    public static function provideNaturalNoZero(): iterable
     {
-        return [
+        yield from [
             [
                 '0',
                 false,
@@ -982,17 +1125,11 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider base64Provider
-     *
-     * @param $str
-     * @param $expected
-     * @param mixed $first
-     */
-    public function testBase64($first, $expected)
+    #[DataProvider('provideBase64')]
+    public function testBase64(?string $str, bool $expected): void
     {
         $data = [
-            'foo' => $first,
+            'foo' => $str,
         ];
 
         $this->validation->setRules([
@@ -1002,9 +1139,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function base64Provider()
+    /**
+     * @return iterable<array{string|null, bool}>
+     */
+    public static function provideBase64(): iterable
     {
-        return [
+        yield from [
             [
                 base64_encode('string'),
                 true,
@@ -1014,23 +1154,21 @@ final class FormatRulesTest extends CIUnitTestCase
                 false,
             ],
             [
+                'dGVszdA==',
+                false,
+            ],
+            [
                 null,
                 false,
             ],
         ];
     }
 
-    /**
-     * @dataProvider jsonProvider
-     *
-     * @param $str
-     * @param $expected
-     * @param mixed $first
-     */
-    public function testJson($first, $expected)
+    #[DataProvider('provideJson')]
+    public function testJson(?string $str, bool $expected): void
     {
         $data = [
-            'foo' => $first,
+            'foo' => $str,
         ];
 
         $this->validation->setRules([
@@ -1040,9 +1178,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function jsonProvider()
+    /**
+     * @return iterable<array{string|null, bool}>
+     */
+    public static function provideJson(): iterable
     {
-        return [
+        yield from [
             [
                 'null',
                 true,
@@ -1082,16 +1223,11 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider timezoneProvider
-     *
-     * @param $value
-     * @param $expected
-     */
-    public function testTimeZone($value, $expected)
+    #[DataProvider('provideTimeZone')]
+    public function testTimeZone(?string $str, bool $expected): void
     {
         $data = [
-            'foo' => $value,
+            'foo' => $str,
         ];
 
         $this->validation->setRules([
@@ -1101,9 +1237,12 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function timezoneProvider()
+    /**
+     * @return iterable<array{string|null, bool}>
+     */
+    public static function provideTimeZone(): iterable
     {
-        return [
+        yield from [
             [
                 'America/Chicago',
                 true,
@@ -1123,14 +1262,8 @@ final class FormatRulesTest extends CIUnitTestCase
         ];
     }
 
-    /**
-     * @dataProvider validDateProvider
-     *
-     * @param $str
-     * @param $format
-     * @param $expected
-     */
-    public function testValidDate($str, $format, $expected)
+    #[DataProvider('provideValidDate')]
+    public function testValidDate(?string $str, ?string $format, bool $expected): void
     {
         $data = [
             'foo' => $str,
@@ -1143,9 +1276,17 @@ final class FormatRulesTest extends CIUnitTestCase
         $this->assertSame($expected, $this->validation->run($data));
     }
 
-    public function validDateProvider()
+    /**
+     * @return iterable<array{string|null, string|null, bool}>
+     */
+    public static function provideValidDate(): iterable
     {
-        return [
+        yield from [
+            [
+                null,
+                'Y-m-d',
+                false,
+            ],
             [
                 'Sun',
                 'D',

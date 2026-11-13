@@ -1,5 +1,4 @@
-Contribution Workflow
-=====================
+# Contribution Workflow
 
 Much of the workflow for contributing to CodeIgniter (or any project)
 involves understanding how [Git](https://git-scm.com/) is used to manage
@@ -15,19 +14,19 @@ values for when you try these:
     ORIGIN_URL      // the cloning URL for your repository fork
     UPSTREAM_URL    // the cloning URL for the CodeIgniter4 repository
 
-Branching
----------
+## Branching
 
-CodeIgniter uses the
-[Git-Flow](http://nvie.com/posts/a-successful-git-branching-model/)
-branching model, which requires all pull requests to be sent to the
-"develop" branch. This is where the next planned version will be
-developed. The "master" branch will always contain the latest stable
+- All bug fix PRs should be sent to the __"develop"__ branch, this is where the
+  next bug fix version will be developed.
+- PRs with any enhancement should be sent to next minor version branch, e.g. __"4.6"__
+
+The "master" branch will always contain the latest stable
 version and is kept clean so a "hotfix" (e.g: an emergency security
 patch) can be applied to master to create a new version, without
-worrying about other features holding it up. For this reason, all
-commits need to be made to "develop" and any sent to "master" will be
-closed automatically. If you have multiple changes to submit, please
+worrying about other features holding it up. Any sent to "master" will be
+closed automatically.
+
+If you have multiple changes to submit, please
 place each change into their own branch on your fork.
 
 One thing at a time: a pull request should only contain one change. That
@@ -38,167 +37,278 @@ but disagree with Y, meaning we cannot merge the request. Using the
 Git-Flow branching model you can create new branches for both of these
 features and send two requests.
 
-Forking
--------
+## Forking
 
 You work with a fork of the CodeIgniter4 repository. This is a copy of
-our repository, in your github account. You can make changes to your
+our repository, in your GitHub account. You can make changes to your
 forked repository, while you cannot do the same with the shared one -
 you have to submit pull requests to it instead.
 
 [Creating a fork](https://help.github.com/articles/fork-a-repo/) is done
-through the Github website. Navigate to [our
+through the GitHub website. Navigate to [our
 repository](https://github.com/codeigniter4/CodeIgniter4), click the
 **Fork** button in the top-right of the page, and choose which account
 or organization of yours should contain that fork.
 
-Cloning
--------
+## Cloning
 
-You *could* work on your repository using Github's web interface, but
+You *could* work on your repository using GitHub's web interface, but
 that is awkward. Most developers will clone their repository to their
 local system, and work with it there.
 
-On Github, navigate to your forked repository, click **Clone or
+On GitHub, navigate to your forked repository, click **Clone or
 download**, and copy the cloning URL shown. We will refer to this as
 ORIGIN\_URL.
 
 Clone your repository, leaving a local folder for you to work with:
 
-    cd ALL_PROJECTS
-    git clone ORIGIN_URL
+```console
+> cd ALL_PROJECTS
+> git clone ORIGIN_URL
+```
 
-Synching
---------
+## Configuring Upstream and Rebasing
 
-Within your local repository, Git will have created an alias,
-**origin**, for the Github repository it is bound to. You want to create
-an alias for the shared repository as well, so that you can "synch" the
-two, making sure that your repository includes any other contributions
-that have been merged by us into the shared repo:
+Git names your fork `origin` when you clone it. Add the main CodeIgniter4
+repository as `upstream` so that you can fetch changes made by other
+contributors. You only need to add this remote once:
 
-    git remote add upstream UPSTREAM_URL
+```console
+> git remote add upstream https://github.com/codeigniter4/CodeIgniter4.git
+> git remote -v
+```
 
-Then synchronizing is done by pulling from us and pushing to you. This
-is normally done locally, so that you can resolve any merge conflicts.
-For instance, to synchronize **develop** branches:
+If `upstream` already exists but uses the wrong URL, update it instead:
 
-    git checkout develop
-    git pull upstream develop
-    git push origin develop
+```console
+> git remote set-url upstream https://github.com/codeigniter4/CodeIgniter4.git
+```
 
-You might get merge conflicts when you pull from upstream. It is your
-responsibility to resolve those locally, so that you can continue
-collaborating with the shared repository. Basically, the shared
-repository is updated in the order that contributions are merged into
-it, not in the order that they might have been submitted. If two PRs
-update the same piece of code, then the first one to be merged will take
-precedence, even if it causes problems for other contributions.
+Fetch the latest upstream branches before rebasing:
 
-It is a good idea to synchronize repositories when the shared one
-changes.
+```console
+> git fetch upstream
+```
 
-Branching Revisited
--------------------
+Rebase bug-fix branches onto `upstream/develop`:
+
+```console
+> git switch your-branch
+> git rebase upstream/develop
+```
+
+Features and enhancements target the next minor-version branch. Replace `4.x`
+with the branch used by your pull request:
+
+```console
+> git switch your-branch
+> git rebase upstream/4.x
+```
+
+> [!IMPORTANT]
+> Do not merge the upstream target branch into your contribution branch. A merge
+> may add merge commits that make the pull request and project history harder to
+> follow. Rebasing keeps the commit history linear and easier to review.
+
+Make sure local work is committed or stashed before rebasing. If Git reports a
+conflict, edit the affected files, mark them as resolved, and continue:
+
+```console
+> git add path/to/resolved-file
+> git rebase --continue
+```
+
+Repeat these commands until the rebase is complete. To cancel the rebase and
+return the branch to its previous state, run:
+
+```console
+> git rebase --abort
+```
+
+If the branch was already pushed to your fork, update it safely after rebasing:
+
+```console
+> git push --force-with-lease origin your-branch
+```
+
+Use `--force-with-lease` rather than `--force` so that Git does not overwrite
+remote changes that you have not fetched.
+
+## Branching Revisited
 
 The top of this page talked about the **master** and **develop**
 branches. The *best practice* for your work is to create a *feature
 branch* locally, to hold a group of related changes (source, unit
-testing, documentation, change log, etc).
+testing, documentation, changelog, etc).
 
 This local branch should be named appropriately, for instance
 "fix/problem123" or "new/mind-reader". The slashes in these branch names
 is optional, and implies a sort of namespacing if used.
 
-For instance, make sure you are in the *develop* branch, and create a
-new feature branch, based on *develop*, for a new feature you are
-creating:
+- All bug fix PRs should be sent to the __"develop"__ branch, this is where the
+  next bug fix version will be developed.
+- PRs with any enhancement should be sent to next minor version branch, e.g. __"4.6"__
 
-    git checkout develop
-    git checkout -b new/mind-reader
+For instance, if you send a PR to __"develop"__ branch, make sure you are in the
+*develop* branch, and create a new bugfix branch, based on *develop*, for a new
+feature you are creating:
+
+```console
+> git switch develop
+> git switch -c fix/problem123
+```
+
+If you send a PR with an enhancement, make sure you are in the *next minor version*
+branch, and create a new feature branch, based on, e.g., __"4.6"__, for a new
+feature you are creating:
+
+```console
+> git switch 4.6
+> git switch -c new/mind-reader
+```
 
 Saving changes only updates your local working area.
 
-Committing
-----------
+## Committing
 
 Your local changes need to be *committed* to save them in your local
 repository. This is where [contribution signing](./signing.md) comes
 in.
 
+Now we don't have detailed rules on commits and its messages. But
+[atomic commit](https://en.wikipedia.org/wiki/Atomic_commit#Atomic_commit_convention) is recommended.
+Keep your commits atomic. One commit for one change.
+
+There are some references for writing good commit messages:
+
+- [Git Best Practices — AFTER Technique - DZone DevOps](https://dzone.com/articles/git-best-practices-after-technique-1)
+- [Semantic Commit Messages](https://gist.github.com/joshbuchea/6f47e86d2510bce28f8e7f42ae84c716)
+- [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
+
+If there are intermediate commits that are not meaningful to the overall PR,
+such as "Fix error on style guide", "Fix phpstan error", "Fix mistake in code",
+and other related commits, you can squash your commits so that we can have a
+clean commit history. But it is not a must.
+
+### Commit Messages
+
+Commit messages are important. They communicate the intent of a specific change,
+concisely. They make it easier to review code, and to find out why a change was
+made if the code history is examined later.
+
+The audience for your commit messages will be the codebase maintainers,
+any code reviewers, and debuggers trying to figure out when a bug might
+have been introduced.
+
+Make your commit messages meaningful.
+
+Commit messages are expected to be descriptive of **why** and what you changed
+specifically. Commit messages like "Fixes #1234" would be asked by the reviewer
+to be revised.
+
 You can have as many commits in a branch as you need to "get it right".
 For instance, to commit your work from a debugging session:
 
-    git add .
-    git commit -S -m "Find and fix the broken reference problem"
+```console
+> git add .
+> git commit -S -m "Fix the broken reference problem"
+```
 
 Just make sure that your commits in a feature branch are all related.
+
+> [!NOTE]
+> We recommend to [Set Default Signing](./signing.md#set-default-signing) for
+> secure signing commits without the `-S` option in `git commit`.
+
+### GPG-Signing Old Commits
+
+Any developer can forget GPG-signing their commits with the option `-S`, like
+`git commit -S -m 'Signed GPG'`. In such a case, all you need to do is the following:
+
+Latest commit only:
+```console
+> git switch your-branch
+> git commit --amend --no-edit --no-verify -S
+> git push --force-with-lease origin your-branch
+```
+
+Only the specified number of commits:
+```console
+> git switch your-branch
+> git rebase -i HEAD~3 --exec 'git commit --amend --no-edit --no-verify -S'
+> git push --force-with-lease origin your-branch
+```
+
+> [!NOTE]
+> `HEAD~3` specifies the last 3 commits in the PR. Change *3* to the actual number of commits.
+
+All commits:
+```console
+> git switch your-branch
+> git rebase -i --root --exec 'git commit --amend --no-edit --no-verify -S'
+> git push --force-with-lease origin your-branch
+```
+
+As a faster alternative, you can still securely sign commits without the `-S`
+option in `git commit`. See [Set Default Signing](./signing.md#set-default-signing).
+
+### Changing a Commit Message
+
+See <https://docs.github.com/en/pull-requests/committing-changes-to-your-project/creating-and-editing-commits/changing-a-commit-message>.
+
+### When You Work on Two Features
 
 If you are working on two features at a time, then you will want to
 switch between them to keep the contributions separate. For instance:
 
-    git checkout new/mind-reader
-    // work away
-    git add .
-    git commit -S -m "Added adapter for abc"
-    git checkout fix/issue-123
-    // work away
-    git add .
-    git commit -S -m "Fixed problem in DEF\Something"
-    git checkout develop
+```console
+> git switch new/mind-reader
+> ## work away
+> git add .
+> git commit -S -m "Added adapter for abc"
+> git switch fix/issue-123
+> ## work away
+> git add .
+> git commit -S -m "Fixed problem in DEF\Something"
+> git switch develop
+```
 
-The last checkout makes sure that you end up in your *develop* branch as
+The last switch makes sure that you end up in your *develop* branch as
 a starting point for your next session working with your repository.
 This is a good practice, as it is not always obvious which branch you
 are working in.
 
-Pushing Your Branch
--------------------
+## Pushing Your Branch
 
 At some point, you will decide that your feature branch is complete, or
 that it could benefit from a review by fellow developers.
 
-**Note:**
-Remember to synch your local repo with the shared one before pushing!
-It is a lot easier to resolve conflicts at this stage.
+Before pushing, follow
+[Configuring Upstream and Rebasing](#configuring-upstream-and-rebasing) to bring
+your contribution branch up to date and resolve any conflicts.
 
+And finally push your local branch to your GitHub repository:
 
-Synchronize your repository:
+```console
+> git push --force-with-lease origin fix/issue-123
+```
 
-    git checkout develop
-    git pull upstream develop
-    git push origin develop
+## Pull Requests
 
-Bring your feature branch up to date:
-
-    git checkout new/mind-reader
-    git merge develop
-
-And finally push your local branch to your github repository:
-
-    git push origin new/mind-reader
-
-Pull Requests
--------------
-
-On Github, you propose your changes one feature branch at a time, by
+On GitHub, you propose your changes one feature branch at a time, by
 switching to the branch you wish to contribute, and then clicking on
 "New pull request".
 
-Make sure the pull request is for the shared **develop** branch, or it
-may be rejected.
+Make sure the pull request is for the shared __"develop"__ or next minor version
+branch, e.g. __"4.6"__, or it may be rejected.
 
 Make sure that the PR title is helpful for the maintainers and other
 developers. Add any comments appropriate, for instance asking for
 review.
 
-<div class="admonition note">
-
-If you do not provide a title or description for your PR, the odds of it being summarily rejected
-
-:   rise astronomically.
-
-</div>
+> [!NOTE]
+> If you do not provide a title or description for your PR, the odds of it being
+> summarily rejected rise astronomically.
 
 When your PR is submitted, a continuous integration task will be
 triggered, running all the unit tests as well as any other checking we
@@ -213,8 +323,88 @@ If your PR does not follow our contribution guidelines, or is
 incomplete, the codebase maintainers will comment on it, pointing out
 what needs fixing.
 
-Cleanup
--------
+### Labeling PRs
+
+If you have the privilege of labeling PRs, you can help the maintainers.
+
+Label your PRs with the one of the following [labels](https://github.com/codeigniter4/CodeIgniter4/labels):
+- **bug** ... PRs that fix bugs
+- **enhancement** ... PRs to improve existing functionalities
+- **new feature** ... PRs for new features
+- **refactor** ... PRs to refactor
+
+And if your PRs have the breaking changes, label the following label:
+- **breaking change** ... PRs that may break existing functionalities
+
+## Updating Your Branch
+
+If you are asked for changes in the review, commit the fix in your branch and
+push it to GitHub again.
+
+If the __"develop"__ or next minor version branch, e.g. __"4.6"__, progresses
+and conflicts arise that prevent merging, or if you are asked to *rebase*, you
+may first create a backup branch:
+
+```console
+> git branch fix/problem123.bk fix/problem123
+```
+
+Then follow
+[Configuring Upstream and Rebasing](#configuring-upstream-and-rebasing).
+
+Occasionally, the Composer packages for development may be updated. Run the
+following command to use the latest packages:
+
+```console
+composer update
+```
+
+And finally push your local branch to your GitHub repository:
+
+```console
+> git push --force-with-lease origin fix/problem123
+```
+
+## If You Sent to the Wrong Branch
+
+If you have sent a PR to the wrong branch, you need to create a new PR branch.
+
+When you have the PR branch `feat-abc` and you should have sent the PR to __"4.6"__,
+but you created the PR branch from `develop` and sent a PR.
+
+Copy the IDs of any commits you made that you want to keep:
+
+```console
+> git log
+```
+
+Fetch the latest upstream branches:
+
+```console
+> git fetch upstream
+```
+
+(Optional) Create a new branch as a backup, just in case:
+
+```console
+> git branch feat-abc.bk feat-abc
+```
+
+Rebase your PR branch from `develop` onto __"4.6"__:
+
+```console
+> git rebase --onto upstream/4.6 develop feat-abc
+```
+
+Force push.
+
+```console
+> git push --force-with-lease origin feat-abc
+```
+
+On the GitHub PR page, change the base branch to the correct branch __"4.6"__.
+
+## Cleanup
 
 If your PR is accepted and merged into the shared repository, you can
-delete that branch in your github repository as well as locally.
+delete that branch in your GitHub repository as well as locally.

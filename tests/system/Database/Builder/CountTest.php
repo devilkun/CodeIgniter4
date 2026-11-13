@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,10 +16,12 @@ namespace CodeIgniter\Database\Builder;
 use CodeIgniter\Database\BaseBuilder;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\Mock\MockConnection;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class CountTest extends CIUnitTestCase
 {
     protected $db;
@@ -29,7 +33,7 @@ final class CountTest extends CIUnitTestCase
         $this->db = new MockConnection([]);
     }
 
-    public function testCountAll()
+    public function testCountAll(): void
     {
         $builder = new BaseBuilder('jobs', $this->db);
         $builder->testMode();
@@ -39,7 +43,7 @@ final class CountTest extends CIUnitTestCase
         $this->assertSame($expectedSQL, $builder->countAll(true));
     }
 
-    public function testCountAllResults()
+    public function testCountAllResults(): void
     {
         $builder = new BaseBuilder('jobs', $this->db);
         $builder->testMode();
@@ -51,7 +55,7 @@ final class CountTest extends CIUnitTestCase
         $this->assertSame($expectedSQL, str_replace("\n", ' ', $answer));
     }
 
-    public function testCountAllResultsWithGroupBy()
+    public function testCountAllResultsWithGroupBy(): void
     {
         $builder = new BaseBuilder('jobs', $this->db);
         $builder->groupBy('id');
@@ -67,7 +71,7 @@ final class CountTest extends CIUnitTestCase
     /**
      * @see https://github.com/codeigniter4/CodeIgniter4/issues/3651
      */
-    public function testCountAllResultsWithGroupByAndPrefix()
+    public function testCountAllResultsWithGroupByAndPrefix(): void
     {
         $this->db = new MockConnection(['DBPrefix' => 'ci_']);
 
@@ -84,7 +88,7 @@ final class CountTest extends CIUnitTestCase
         $this->assertSame($expectedSQL, str_replace("\n", ' ', $answer2));
     }
 
-    public function testCountAllResultsWithGroupByAndHaving()
+    public function testCountAllResultsWithGroupByAndHaving(): void
     {
         $builder = new BaseBuilder('jobs', $this->db);
         $builder->groupBy('id');
@@ -98,7 +102,7 @@ final class CountTest extends CIUnitTestCase
         $this->assertSame($expectedSQL, str_replace("\n", ' ', $answer));
     }
 
-    public function testCountAllResultsWithHavingOnly()
+    public function testCountAllResultsWithHavingOnly(): void
     {
         $builder = new BaseBuilder('jobs', $this->db);
         $builder->having('1=1');

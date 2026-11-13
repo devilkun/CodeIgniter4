@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -24,11 +26,6 @@ class TestRegistrar
             'bar' => [
                 'first',
                 'second',
-            ],
-            'format' => 'nice',
-            'fruit'  => [
-                'apple',
-                'banana',
             ],
         ];
     }

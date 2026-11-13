@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,9 +13,9 @@
 
 namespace CodeIgniter\Test;
 
+use PHPUnit\Framework\Attributes\Group;
+
 /**
- * Class BootstrapFCPATHTest
- *
  * This test confirms that the bootstrap.php
  * will set the correct FCPATH regardless of the current directory
  *
@@ -23,11 +25,12 @@ namespace CodeIgniter\Test;
  *
  * @internal
  */
+#[Group('Others')]
 final class BootstrapFCPATHTest extends CIUnitTestCase
 {
-    private $currentDir = __DIR__;
-    private $dir1       = '/tmp/dir1';
-    private $file1      = '/tmp/dir1/testFile.php';
+    private string $currentDir = __DIR__;
+    private string $dir1       = '/tmp/dir1';
+    private string $file1      = '/tmp/dir1/testFile.php';
 
     protected function setUp(): void
     {
@@ -45,14 +48,14 @@ final class BootstrapFCPATHTest extends CIUnitTestCase
         $this->deleteDirectories();
     }
 
-    public function testSetFCPATH()
+    public function testSetFCPATH(): void
     {
         $result1     = $this->readOutput($this->file1);
         $correctPath = $this->correctFCPATH();
         $this->assertSame($correctPath, $result1);
     }
 
-    private function correctFCPATH()
+    private function correctFCPATH(): string
     {
         return realpath(__DIR__ . '/../../../public') . DIRECTORY_SEPARATOR;
     }
@@ -78,12 +81,12 @@ final class BootstrapFCPATHTest extends CIUnitTestCase
 
     private function deleteFiles(): void
     {
-        if (file_exists($this->file1)) {
+        if (is_file($this->file1)) {
             unlink($this->file1);
         }
     }
 
-    private function fileContents()
+    private function fileContents(): string
     {
         $fileContents = '';
         $fileContents .= '<?php' . PHP_EOL;
@@ -93,12 +96,11 @@ final class BootstrapFCPATHTest extends CIUnitTestCase
         $fileContents .= "include_once '" . $this->currentDir . "' . '/../../../vendor/autoload.php';" . PHP_EOL;
         $fileContents .= "include_once '" . $this->currentDir . "' . '/../../../system/Test/bootstrap.php';" . PHP_EOL;
         $fileContents .= '// return value of FCPATH' . PHP_EOL;
-        $fileContents .= 'echo FCPATH;' . PHP_EOL;
 
-        return $fileContents;
+        return $fileContents . 'echo FCPATH;' . PHP_EOL;
     }
 
-    private function readOutput($file)
+    private function readOutput(string $file): string
     {
         ob_start();
         system('php -f ' . $file);

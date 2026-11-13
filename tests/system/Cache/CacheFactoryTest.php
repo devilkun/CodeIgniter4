@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,114 +13,89 @@
 
 namespace CodeIgniter\Cache;
 
+use CodeIgniter\Cache\Exceptions\CacheException;
 use CodeIgniter\Cache\Handlers\DummyHandler;
 use CodeIgniter\Test\CIUnitTestCase;
 use Config\Cache;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class CacheFactoryTest extends CIUnitTestCase
 {
-    private static $directory = 'CacheFactory';
-    private $cacheFactory;
-    private $config;
+    private static string $directory = 'CacheFactory';
+    private Cache $config;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->cacheFactory = new CacheFactory();
-
         // Initialize path
         $this->config = new Cache();
-        $this->config->storePath .= self::$directory;
+        $this->config->file['storePath'] .= self::$directory;
     }
 
     protected function tearDown(): void
     {
-        if (is_dir($this->config->storePath)) {
-            chmod($this->config->storePath, 0777);
-            rmdir($this->config->storePath);
+        if (is_dir($this->config->file['storePath'])) {
+            chmod($this->config->file['storePath'], 0777);
+            rmdir($this->config->file['storePath']);
         }
     }
 
-    public function testNew()
+    public function testGetHandlerExceptionCacheInvalidHandlers(): void
     {
-        $this->assertInstanceOf(CacheFactory::class, $this->cacheFactory);
-    }
-
-    public function testGetHandlerExceptionCacheInvalidHandlers()
-    {
-        $this->expectException('CodeIgniter\Cache\Exceptions\CacheException');
+        $this->expectException(CacheException::class);
         $this->expectExceptionMessage('Cache config must have an array of $validHandlers.');
 
-        $this->config->validHandlers = null;
+        $this->config->validHandlers = [];
 
-        $this->cacheFactory->getHandler($this->config);
+        CacheFactory::getHandler($this->config);
     }
 
-    public function testGetHandlerExceptionCacheNoBackup()
+    public function testGetHandlerExceptionCacheHandlerNotFound(): void
     {
-        $this->expectException('CodeIgniter\Cache\Exceptions\CacheException');
-        $this->expectExceptionMessage('Cache config must have a handler and backupHandler set.');
-
-        $this->config->backupHandler = null;
-
-        $this->cacheFactory->getHandler($this->config);
-    }
-
-    public function testGetHandlerExceptionCacheNoHandler()
-    {
-        $this->expectException('CodeIgniter\Cache\Exceptions\CacheException');
-        $this->expectExceptionMessage('Cache config must have a handler and backupHandler set.');
-
-        $this->config->handler = null;
-
-        $this->cacheFactory->getHandler($this->config);
-    }
-
-    public function testGetHandlerExceptionCacheHandlerNotFound()
-    {
-        $this->expectException('CodeIgniter\Cache\Exceptions\CacheException');
+        $this->expectException(CacheException::class);
         $this->expectExceptionMessage('Cache config has an invalid handler or backup handler specified.');
 
         unset($this->config->validHandlers[$this->config->handler]);
 
-        $this->cacheFactory->getHandler($this->config);
+        CacheFactory::getHandler($this->config);
     }
 
-    public function testGetDummyHandler()
+    public function testGetDummyHandler(): void
     {
-        if (! is_dir($this->config->storePath)) {
-            mkdir($this->config->storePath, 0555, true);
+        if (! is_dir($this->config->file['storePath'])) {
+            mkdir($this->config->file['storePath'], 0555, true);
         }
 
         $this->config->handler = 'dummy';
 
-        $this->assertInstanceOf(DummyHandler::class, $this->cacheFactory->getHandler($this->config));
+        $this->assertInstanceOf(DummyHandler::class, CacheFactory::getHandler($this->config));
 
         // Initialize path
         $this->config = new Cache();
-        $this->config->storePath .= self::$directory;
+        $this->config->file['storePath'] .= self::$directory;
     }
 
-    public function testHandlesBadHandler()
+    public function testHandlesBadHandler(): void
     {
-        if (! is_dir($this->config->storePath)) {
-            mkdir($this->config->storePath, 0555, true);
+        if (! is_dir($this->config->file['storePath'])) {
+            mkdir($this->config->file['storePath'], 0555, true);
         }
 
         $this->config->handler = 'dummy';
 
-        if (stripos('win', php_uname()) === 0) {
-            $this->assertTrue(true); // can't test properly if we are on Windows
+        if (is_windows()) {
+            $this->markTestSkipped('Cannot test this properly on Windows.');
         } else {
-            $this->assertInstanceOf(DummyHandler::class, $this->cacheFactory->getHandler($this->config, 'wincache', 'wincache'));
+            $this->assertInstanceOf(DummyHandler::class, CacheFactory::getHandler($this->config, 'wincache', 'wincache'));
         }
 
         // Initialize path
         $this->config = new Cache();
-        $this->config->storePath .= self::$directory;
+        $this->config->file['storePath'] .= self::$directory;
     }
 }

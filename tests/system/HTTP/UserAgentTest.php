@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,41 +14,39 @@
 namespace CodeIgniter\HTTP;
 
 use CodeIgniter\Test\CIUnitTestCase;
+use PHPUnit\Framework\Attributes\BackupGlobals;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * @internal
  */
+#[BackupGlobals(true)]
+#[Group('Others')]
 final class UserAgentTest extends CIUnitTestCase
 {
-    protected $_user_agent = 'Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_7; en-us) AppleWebKit/533.20.25 (KHTML, like Gecko) Version/5.0.4 Safari/533.20.27';
-    protected $_mobile_ua  = 'Mozilla/5.0 (iPhone; U; CPU iPhone OS 4_1 like Mac OS X; en-us) AppleWebKit/532.9 (KHTML, like Gecko) Version/4.0.5 Mobile/8B117 Safari/6531.22.7';
-
-    /**
-     * @var UserAgent
-     */
-    protected $agent;
+    private string $_user_agent = 'Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_7; en-us) AppleWebKit/533.20.25 (KHTML, like Gecko) Version/5.0.4 Safari/533.20.27';
+    private string $_mobile_ua  = 'Mozilla/5.0 (iPhone; U; CPU iPhone OS 4_1 like Mac OS X; en-us) AppleWebKit/532.9 (KHTML, like Gecko) Version/4.0.5 Mobile/8B117 Safari/6531.22.7';
+    private UserAgent $agent;
 
     protected function setUp(): void
     {
+        $this->resetServices();
         parent::setUp();
 
         // set a baseline user agent
-        $_SERVER['HTTP_USER_AGENT'] = $this->_user_agent;
+        service('superglobals')->setServer('HTTP_USER_AGENT', $this->_user_agent);
 
         $this->agent = new UserAgent();
-
-        helper('url');
     }
 
-    public function testMobile()
+    public function testMobile(): void
     {
         // Mobile Not Set
-        $_SERVER['HTTP_USER_AGENT'] = $this->_mobile_ua;
+        service('superglobals')->setServer('HTTP_USER_AGENT', $this->_mobile_ua);
         $this->assertFalse($this->agent->isMobile());
-        unset($_SERVER['HTTP_USER_AGENT']);
     }
 
-    public function testIsFunctions()
+    public function testIsFunctions(): void
     {
         $this->assertTrue($this->agent->isBrowser());
         $this->assertTrue($this->agent->isBrowser('Safari'));
@@ -55,32 +55,61 @@ final class UserAgentTest extends CIUnitTestCase
         $this->assertFalse($this->agent->isMobile());
     }
 
-    public function testReferrer()
+    public function testReferrer(): void
     {
-        $_SERVER['HTTP_REFERER'] = 'http://codeigniter.com/user_guide/';
+        service('superglobals')->setServer('HTTP_REFERER', 'http://codeigniter.com/user_guide/');
+
         $this->assertTrue($this->agent->isReferral());
         $this->assertSame('http://codeigniter.com/user_guide/', $this->agent->getReferrer());
 
         $this->setPrivateProperty($this->agent, 'referrer', null);
-        unset($_SERVER['HTTP_REFERER']);
+        service('superglobals')->setServer('HTTP_REFERER', '');
         $this->assertFalse($this->agent->isReferral());
         $this->assertSame('', $this->agent->getReferrer());
     }
 
-    public function testAgentString()
+    public function testAgentString(): void
     {
         $this->assertSame($this->_user_agent, $this->agent->getAgentString());
     }
 
-    public function testBrowserInfo()
+    public function testBrowserInfo(): void
     {
         $this->assertSame('Mac OS X', $this->agent->getPlatform());
         $this->assertSame('Safari', $this->agent->getBrowser());
-        $this->assertSame('533.20.27', $this->agent->getVersion());
+        $this->assertSame('5.0.4', $this->agent->getVersion());
         $this->assertSame('', $this->agent->getRobot());
     }
 
-    public function testParse()
+    public function testParseModernSafariUsesVersionToken(): void
+    {
+        $this->agent->parse('Mozilla/5.0 (Macintosh; Intel Mac OS X 13_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.3 Safari/605.1.15');
+
+        $this->assertSame('Mac OS X', $this->agent->getPlatform());
+        $this->assertSame('Safari', $this->agent->getBrowser());
+        $this->assertSame('16.3', $this->agent->getVersion());
+    }
+
+    public function testParseMobileSafariUsesVersionToken(): void
+    {
+        $this->agent->parse($this->_mobile_ua);
+
+        $this->assertSame('iOS', $this->agent->getPlatform());
+        $this->assertSame('Safari', $this->agent->getBrowser());
+        $this->assertSame('4.0.5', $this->agent->getVersion());
+        $this->assertSame('Apple iPhone', $this->agent->getMobile());
+    }
+
+    public function testParseChromeWithSafariTokenUsesChromeVersion(): void
+    {
+        $this->agent->parse('Mozilla/5.0 (Macintosh; Intel Mac OS X 13_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36');
+
+        $this->assertSame('Mac OS X', $this->agent->getPlatform());
+        $this->assertSame('Chrome', $this->agent->getBrowser());
+        $this->assertSame('110.0.0.0', $this->agent->getVersion());
+    }
+
+    public function testParse(): void
     {
         $newAgent = 'Mozilla/5.0 (Android; Mobile; rv:13.0) Gecko/13.0 Firefox/13.0';
         $this->agent->parse($newAgent);
@@ -97,7 +126,7 @@ final class UserAgentTest extends CIUnitTestCase
         $this->assertTrue($this->agent->isMobile('android'));
     }
 
-    public function testParseBot()
+    public function testParseBot(): void
     {
         $newAgent = 'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)';
         $this->agent->parse($newAgent);
@@ -108,9 +137,9 @@ final class UserAgentTest extends CIUnitTestCase
         $this->assertFalse($this->agent->isMobile());
     }
 
-    public function testEmptyUserAgentVariable()
+    public function testEmptyUserAgentVariable(): void
     {
-        unset($_SERVER['HTTP_USER_AGENT']);
+        service('superglobals')->setServer('HTTP_USER_AGENT', '');
         $agent = new UserAgent();
         $this->assertEmpty((string) $agent);
     }

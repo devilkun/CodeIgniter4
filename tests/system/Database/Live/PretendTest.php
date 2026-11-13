@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,12 +16,12 @@ namespace CodeIgniter\Database\Live;
 use CodeIgniter\Database\Query;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
- * @group DatabaseLive
- *
  * @internal
  */
+#[Group('DatabaseLive')]
 final class PretendTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
@@ -30,13 +32,13 @@ final class PretendTest extends CIUnitTestCase
         $this->db->pretend(false);
     }
 
-    public function testPretendReturnsQueryObject()
+    public function testPretendReturnsQueryObject(): void
     {
         $result = $this->db->pretend(false)
             ->table('user')
             ->get();
 
-        $this->assertFalse($result instanceof Query);
+        $this->assertNotInstanceOf(Query::class, $result);
 
         $result = $this->db->pretend(true)
             ->table('user')

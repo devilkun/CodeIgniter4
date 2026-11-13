@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,15 +13,21 @@
 
 namespace CodeIgniter\Format;
 
+use CodeIgniter\Format\Exceptions\FormatException;
 use CodeIgniter\Test\CIUnitTestCase;
 use DOMDocument;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+use stdClass;
+use Stringable;
 
 /**
  * @internal
  */
+#[Group('Others')]
 final class XMLFormatterTest extends CIUnitTestCase
 {
-    protected $xmlFormatter;
+    private XMLFormatter $xmlFormatter;
 
     protected function setUp(): void
     {
@@ -27,7 +35,7 @@ final class XMLFormatterTest extends CIUnitTestCase
         $this->xmlFormatter = new XMLFormatter();
     }
 
-    public function testBasicXML()
+    public function testBasicXML(): void
     {
         $data = [
             'foo' => 'bar',
@@ -42,7 +50,7 @@ final class XMLFormatterTest extends CIUnitTestCase
         $this->assertSame($expected, $this->xmlFormatter->format($data));
     }
 
-    public function testFormatXMLWithMultilevelArray()
+    public function testFormatXMLWithMultilevelArray(): void
     {
         $data = [
             'foo' => ['bar'],
@@ -57,7 +65,7 @@ final class XMLFormatterTest extends CIUnitTestCase
         $this->assertSame($expected, $this->xmlFormatter->format($data));
     }
 
-    public function testFormatXMLWithMultilevelArrayAndNumericKey()
+    public function testFormatXMLWithMultilevelArrayAndNumericKey(): void
     {
         $data = [
             ['foo'],
@@ -72,7 +80,7 @@ final class XMLFormatterTest extends CIUnitTestCase
         $this->assertSame($expected, $this->xmlFormatter->format($data));
     }
 
-    public function testStringFormatting()
+    public function testStringFormatting(): void
     {
         $data     = ['Something'];
         $expected = <<<'EOH'
@@ -84,7 +92,7 @@ final class XMLFormatterTest extends CIUnitTestCase
         $this->assertSame($expected, $this->xmlFormatter->format($data));
     }
 
-    public function testValidatingXmlTags()
+    public function testValidatingXmlTags(): void
     {
         $data = [
             'BBB096630BD' => 'foo',
@@ -100,9 +108,10 @@ final class XMLFormatterTest extends CIUnitTestCase
     }
 
     /**
-     * @dataProvider invalidTagsProvider
+     * @param array<string, string> $input
      */
-    public function testValidatingInvalidTags(string $expected, array $input)
+    #[DataProvider('provideValidatingInvalidTags')]
+    public function testValidatingInvalidTags(string $expected, array $input): void
     {
         $expectedXML = <<<EOH
             <?xml version="1.0"?>
@@ -113,7 +122,10 @@ final class XMLFormatterTest extends CIUnitTestCase
         $this->assertSame($expectedXML, $this->xmlFormatter->format($input));
     }
 
-    public function invalidTagsProvider()
+    /**
+     * @return iterable<int, array{0: string, 1: array<string, string>}>
+     */
+    public static function provideValidatingInvalidTags(): iterable
     {
         return [
             [
@@ -143,7 +155,52 @@ final class XMLFormatterTest extends CIUnitTestCase
         ];
     }
 
-    public function testDeepNestedArrayToXml()
+    public function testEmptyTagNameAfterSanitization(): void
+    {
+        $data = [
+            '!@#' => 'value',
+        ];
+
+        $expected = <<<'EOH'
+            <?xml version="1.0"?>
+            <response><item>value</item></response>
+
+            EOH;
+
+        $this->assertSame($expected, $this->xmlFormatter->format($data));
+    }
+
+    public function testStringableObjectValue(): void
+    {
+        $value = new class () implements Stringable {
+            public function __toString(): string
+            {
+                return 'bar';
+            }
+        };
+
+        $data = [
+            'foo' => $value,
+        ];
+
+        $expected = <<<'EOH'
+            <?xml version="1.0"?>
+            <response><foo>bar</foo></response>
+
+            EOH;
+
+        $this->assertSame($expected, $this->xmlFormatter->format($data));
+    }
+
+    public function testNonStringableObjectValueThrows(): void
+    {
+        $this->expectException(FormatException::class);
+        $this->expectExceptionMessage('Cannot convert the value of type "stdClass" to a string for XML output.');
+
+        $this->xmlFormatter->format(['foo' => new stdClass()]);
+    }
+
+    public function testDeepNestedArrayToXml(): void
     {
         $data = [
             'data' => [

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -14,6 +16,9 @@ namespace CodeIgniter\Commands\Generators;
 use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
 use CodeIgniter\CLI\GeneratorTrait;
+use CodeIgniter\Controller;
+use CodeIgniter\RESTful\ResourceController;
+use CodeIgniter\RESTful\ResourcePresenter;
 
 /**
  * Generates a skeleton controller file.
@@ -53,7 +58,7 @@ class ControllerGenerator extends BaseCommand
     /**
      * The Command's Arguments
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $arguments = [
         'name' => 'The controller class name.',
@@ -62,7 +67,7 @@ class ControllerGenerator extends BaseCommand
     /**
      * The Command's Options
      *
-     * @var array
+     * @var array<string, string>
      */
     protected $options = [
         '--bare'      => 'Extends from CodeIgniter\Controller instead of BaseController.',
@@ -82,7 +87,7 @@ class ControllerGenerator extends BaseCommand
         $this->template  = 'controller.tpl.php';
 
         $this->classNameLang = 'CLI.generator.className.controller';
-        $this->execute($params);
+        $this->generateClass($params);
     }
 
     /**
@@ -99,7 +104,7 @@ class ControllerGenerator extends BaseCommand
         // Gets the appropriate parent class to extend.
         if ($bare || $rest) {
             if ($bare) {
-                $useStatement = 'CodeIgniter\Controller';
+                $useStatement = Controller::class;
                 $extends      = 'Controller';
             } elseif ($rest) {
                 $rest = is_string($rest) ? $rest : 'controller';
@@ -112,10 +117,10 @@ class ControllerGenerator extends BaseCommand
                 }
 
                 if ($rest === 'controller') {
-                    $useStatement = 'CodeIgniter\RESTful\ResourceController';
+                    $useStatement = ResourceController::class;
                     $extends      = 'ResourceController';
                 } elseif ($rest === 'presenter') {
-                    $useStatement = 'CodeIgniter\RESTful\ResourcePresenter';
+                    $useStatement = ResourcePresenter::class;
                     $extends      = 'ResourcePresenter';
                 }
             }
@@ -125,7 +130,7 @@ class ControllerGenerator extends BaseCommand
             $class,
             ['{useStatement}', '{extends}'],
             [$useStatement, $extends],
-            ['type' => $rest]
+            ['type' => $rest],
         );
     }
 }

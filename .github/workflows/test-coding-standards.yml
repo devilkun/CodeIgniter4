@@ -4,33 +4,43 @@ on:
   push:
     paths:
       - '**.php'
+      - 'docs/**.md'
       - 'spark'
       - '.github/workflows/test-coding-standards.yml'
   pull_request:
     paths:
       - '**.php'
+      - 'docs/**.md'
       - 'spark'
       - '.github/workflows/test-coding-standards.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   lint:
     name: PHP ${{ matrix.php-version }} Lint with PHP CS Fixer
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     strategy:
       fail-fast: false
       matrix:
         php-version:
-          - '7.3'
-          - '7.4'
-          - '8.0'
+          - '8.2'
+        include:
+          - php-version: '8.5'
+            composer-option: '--ignore-platform-req=php'
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: ${{ matrix.php-version }}
           extensions: tokenizer
@@ -38,22 +48,19 @@ jobs:
 
       - name: Get composer cache directory
         id: composer-cache
-        run: echo "::set-output name=dir::$(composer config cache-files-dir)"
+        run: echo "COMPOSER_CACHE_FILES_DIR=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
 
       - name: Cache dependencies
-        uses: actions/cache@v2
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-${{ matrix.php-version }}-${{ hashFiles('**/composer.lock') }}
+          path: ${{ steps.composer-cache.outputs.COMPOSER_CACHE_FILES_DIR }}
+          key: composer-php-${{ matrix.php-version }}-${{ hashFiles('**/composer.json') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.php-version }}-
-            ${{ runner.os }}-
+            composer-php-${{ matrix.php-version }}-
+            composer-
 
       - name: Install dependencies
-        run: composer update --ansi --no-interaction
+        run: composer update --ansi --no-interaction ${{ matrix.composer-option }}
 
-      - name: Run lint on `app/`, `admin/`, `public/`
-        run: vendor/bin/php-cs-fixer fix --verbose --ansi --dry-run --config=.no-header.php-cs-fixer.dist.php --using-cache=no --diff
-
-      - name: Run lint on `system/`, `tests`, `utils/`, and root PHP files
-        run: vendor/bin/php-cs-fixer fix --verbose --ansi --dry-run --using-cache=no --diff
+      - name: Run lint
+        run: composer cs

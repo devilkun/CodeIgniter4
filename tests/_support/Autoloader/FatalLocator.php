@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -12,7 +14,7 @@
 namespace Tests\Support\Autoloader;
 
 use CodeIgniter\Autoloader\FileLocator;
-use RuntimeException;
+use CodeIgniter\Exceptions\RuntimeException;
 
 /**
  * Class FatalLocator
@@ -32,9 +34,9 @@ class FatalLocator extends FileLocator
      *
      * @return false|string The path to the file, or false if not found.
      */
-    public function locateFile(string $file, ?string $folder = null, string $ext = 'php')
+    public function locateFile(string $file, ?string $folder = null, string $ext = 'php'): false|string
     {
-        $folder = $folder ?? 'null';
+        $folder ??= 'null';
 
         throw new RuntimeException("locateFile({$file}, {$folder}, {$ext})");
     }

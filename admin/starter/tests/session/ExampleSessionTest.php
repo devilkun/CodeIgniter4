@@ -7,9 +7,11 @@ use CodeIgniter\Test\CIUnitTestCase;
  */
 final class ExampleSessionTest extends CIUnitTestCase
 {
-    public function testSessionSimple()
+    public function testSessionSimple(): void
     {
-        $this->session->set('logged_in', 123);
-        $this->assertSame(123, $this->session->get('logged_in'));
+        $session = service('session');
+
+        $session->set('logged_in', 123);
+        $this->assertSame(123, $session->get('logged_in'));
     }
 }

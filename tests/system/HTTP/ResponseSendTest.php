@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -11,8 +13,14 @@
 
 namespace CodeIgniter\HTTP;
 
+use CodeIgniter\Security\Exceptions\SecurityException;
 use CodeIgniter\Test\CIUnitTestCase;
 use Config\App;
+use Config\Services;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use PHPUnit\Framework\Attributes\WithoutErrorHandler;
 
 /**
  * This test suite has been created separately from
@@ -22,6 +30,7 @@ use Config\App;
  *
  * @internal
  */
+#[Group('SeparateProcess')]
 final class ResponseSendTest extends CIUnitTestCase
 {
     /**
@@ -37,12 +46,10 @@ final class ResponseSendTest extends CIUnitTestCase
      * The tests includes a basic sanity check, to make sure that
      * the body we thought would be sent actually was.
      */
-
-    /**
-     * @runInSeparateProcess
-     * @preserveGlobalState  disabled
-     */
-    public function testHeadersMissingDate()
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    #[WithoutErrorHandler]
+    public function testHeadersMissingDate(): void
     {
         $response = new Response(new App());
         $response->pretend(false);
@@ -60,9 +67,7 @@ final class ResponseSendTest extends CIUnitTestCase
         // send it
         ob_start();
         $response->send();
-        if (ob_get_level() > 0) {
-            ob_end_clean();
-        }
+        ob_end_clean();
 
         // and what actually got sent?
         $this->assertHeaderEmitted('Date:');
@@ -71,13 +76,16 @@ final class ResponseSendTest extends CIUnitTestCase
     /**
      * This test does not test that CSP is handled properly -
      * it makes sure that sending gives CSP a chance to do its thing.
-     *
-     * @runInSeparateProcess
-     * @preserveGlobalState  disabled
      */
-    public function testHeadersWithCSP()
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    #[WithoutErrorHandler]
+    public function testHeadersWithCSP(): void
     {
-        $config             = new App();
+        $this->resetFactories();
+        $this->resetServices();
+
+        $config             = config('App');
         $config->CSPEnabled = true;
         $response           = new Response($config);
         $response->pretend(false);
@@ -92,9 +100,7 @@ final class ResponseSendTest extends CIUnitTestCase
         // send it
         ob_start();
         $response->send();
-        if (ob_get_level() > 0) {
-            ob_end_clean();
-        }
+        ob_end_clean();
 
         // and what actually got sent?; test both ways
         $this->assertHeaderEmitted('Content-Security-Policy:');
@@ -104,10 +110,11 @@ final class ResponseSendTest extends CIUnitTestCase
      * Make sure cookies are set by RedirectResponse this way
      *
      * @see https://github.com/codeigniter4/CodeIgniter4/issues/1393
-     * @runInSeparateProcess
-     * @preserveGlobalState  disabled
      */
-    public function testRedirectResponseCookies()
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    #[WithoutErrorHandler]
+    public function testRedirectResponseCookies(): void
     {
         $loginTime = time();
 
@@ -119,20 +126,99 @@ final class ResponseSendTest extends CIUnitTestCase
 
         $answer1 = $response->redirect('/login')
             ->setCookie('foo', 'bar', YEAR)
-            ->setCookie('login_time', $loginTime, YEAR);
+            ->setCookie('login_time', (string) $loginTime, YEAR);
+
         $this->assertTrue($answer1->hasCookie('foo', 'bar'));
         $this->assertTrue($answer1->hasCookie('login_time'));
+
         $response->setBody('Hello');
 
         // send it
         ob_start();
         $response->send();
-        if (ob_get_level() > 0) {
-            ob_end_clean();
-        }
+        ob_end_clean();
 
         // and what actually got sent?
         $this->assertHeaderEmitted('Set-Cookie: foo=bar;');
         $this->assertHeaderEmitted('Set-Cookie: login_time');
+    }
+
+    /**
+     * Make sure secure cookies are not sent with HTTP request
+     */
+    public function testDoNotSendUnSecureCookie(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Attempted to send a secure cookie over a non-secure connection.');
+
+        $request = $this->createMock(IncomingRequest::class);
+        $request->method('isSecure')->willReturn(false);
+        Services::injectMock('request', $request);
+
+        $response = new Response(new App());
+        $response->pretend(false);
+        $body = 'Hello';
+        $response->setBody($body);
+
+        $response->setCookie(
+            'foo',
+            'bar',
+            '',
+            '',
+            '/',
+            '',
+            true,
+        );
+
+        // send it
+        $response->send();
+    }
+
+    /**
+     * Make sure that the headers set by the header() function
+     * are overridden by the headers defined in the Response class.
+     */
+    #[PreserveGlobalState(false)]
+    #[RunInSeparateProcess]
+    #[WithoutErrorHandler]
+    public function testHeaderOverride(): void
+    {
+        $response = new Response(new App());
+        $response->pretend(false);
+
+        $body = 'Hello';
+        $response->setBody($body);
+
+        // single header
+        $response->setHeader('Vary', 'Accept-Encoding');
+        $this->assertSame('Accept-Encoding', $response->header('Vary')->getValue());
+
+        // multiple headers
+        $response->setHeader('Access-Control-Expose-Headers', 'X-Custom-Header');
+        $response->addHeader('Access-Control-Expose-Headers', 'Content-Length');
+        $header = $response->header('Access-Control-Expose-Headers');
+        $this->assertIsArray($header);
+        $this->assertSame('X-Custom-Header', $header[0]->getValue());
+        $this->assertSame('Content-Length', $header[1]->getValue());
+
+        // send it
+        ob_start();
+        header('Vary: User-Agent');
+        header('Access-Control-Expose-Headers: Content-Encoding');
+        header('Allow: GET, POST');
+        $response->send();
+        ob_end_clean();
+
+        // single header
+        $this->assertHeaderEmitted('Vary: Accept-Encoding');
+        $this->assertHeaderNotEmitted('Vary: User-Agent');
+
+        // multiple headers
+        $this->assertHeaderEmitted('Access-Control-Expose-Headers: X-Custom-Header');
+        $this->assertHeaderEmitted('Access-Control-Expose-Headers: Content-Length');
+        $this->assertHeaderNotEmitted('Access-Control-Expose-Headers: Content-Encoding');
+
+        // not overridden by the response class
+        $this->assertHeaderEmitted('Allow: GET, POST');
     }
 }

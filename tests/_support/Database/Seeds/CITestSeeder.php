@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 /**
  * This file is part of CodeIgniter 4 framework.
  *
@@ -15,9 +17,8 @@ use CodeIgniter\Database\Seeder;
 
 class CITestSeeder extends Seeder
 {
-    public function run()
+    public function run(): void
     {
-        // Job Data
         $data = [
             'user' => [
                 [
@@ -84,6 +85,40 @@ class CITestSeeder extends Seeder
                     'key'   => 'key',
                     'value' => 'value',
                 ],
+                [
+                    'key'   => 'multibyte characters pl',
+                    'value' => 'śćźżłąęó',
+                ],
+                [
+                    'key'   => 'multibyte characters fa',
+                    'value' => 'خٌوب',
+                ],
+                [
+                    'key'   => 'multibyte characters bn',
+                    'value' => 'টাইপ',
+                ],
+                [
+                    'key'   => 'multibyte characters ko',
+                    'value' => '캐스팅',
+                ],
+                [
+                    'key'   => 'multibyte characters ml',
+                    'value' => 'ടൈപ്പ്',
+                ],
+            ],
+            'team_members' => [
+                [
+                    'team_id'   => 1,
+                    'person_id' => 22,
+                    'role'      => 'member',
+                    'status'    => 'active',
+                ],
+                [
+                    'team_id'   => 1,
+                    'person_id' => 33,
+                    'role'      => 'mentor',
+                    'status'    => 'active',
+                ],
             ],
             'type_test' => [
                 [
@@ -105,13 +140,14 @@ class CITestSeeder extends Seeder
                     'type_time'       => '2020-07-18T15:22:00.000+02:00',
                     'type_datetime'   => '2020-06-18T05:12:24.000+02:00',
                     'type_timestamp'  => '2019-07-18T21:53:21.000+02:00',
-                    'type_bigint'     => 2342342,
+                    'type_bigint'     => 2_342_342,
                     'type_boolean'    => 1,
                 ],
             ],
         ];
 
-        // set SQL times to more correct format
+        // Normalize formats and remove unsupported types for each database driver
+
         if ($this->db->DBDriver === 'SQLite3') {
             $data['type_test'][0]['type_date']      = '2020/01/11';
             $data['type_test'][0]['type_time']      = '15:22:00';
@@ -121,7 +157,15 @@ class CITestSeeder extends Seeder
 
         if ($this->db->DBDriver === 'Postgre') {
             $data['type_test'][0]['type_time']    = '15:22:00';
-            $data['type_test'][0]['type_boolean'] = true;
+            $data['type_test'][0]['type_boolean'] = true; // PostgreSQL has native boolean type
+
+            $data['ci_sessions'][] = [
+                'id'         => 'ci_session:1f5o06b43phsnnf8if6bo33b635e4p2o',
+                'ip_address' => '127.0.0.1',
+                'timestamp'  => '2021-06-25 21:54:14.991403+02',
+                'data'       => '\x' . bin2hex('__ci_last_regenerate|i:1624650854;_ci_previous_url|s:40:\"http://localhost/index.php/home/index\";'),
+            ];
+
             unset(
                 $data['type_test'][0]['type_enum'],
                 $data['type_test'][0]['type_set'],
@@ -129,7 +173,7 @@ class CITestSeeder extends Seeder
                 $data['type_test'][0]['type_real'],
                 $data['type_test'][0]['type_double'],
                 $data['type_test'][0]['type_decimal'],
-                $data['type_test'][0]['type_blob']
+                $data['type_test'][0]['type_blob'],
             );
         }
 
@@ -144,33 +188,40 @@ class CITestSeeder extends Seeder
                 $data['type_test'][0]['type_set'],
                 $data['type_test'][0]['type_mediumtext'],
                 $data['type_test'][0]['type_double'],
-                $data['type_test'][0]['type_blob']
+                $data['type_test'][0]['type_blob'],
             );
         }
 
         if ($this->db->DBDriver === 'MySQLi') {
+            $data['type_test'][0]['type_time']      = '15:22:00';
+            $data['type_test'][0]['type_date']      = '2020-01-11';
+            $data['type_test'][0]['type_datetime']  = '2020-06-18 05:12:24';
+            $data['type_test'][0]['type_timestamp'] = '2019-07-18 21:53:21';
+
             $data['ci_sessions'][] = [
-                'id'         => '1f5o06b43phsnnf8if6bo33b635e4p2o',
+                'id'         => 'ci_session:1f5o06b43phsnnf8if6bo33b635e4p2o',
                 'ip_address' => '127.0.0.1',
                 'timestamp'  => '2021-06-25 21:54:14',
                 'data'       => '__ci_last_regenerate|i:1624650854;_ci_previous_url|s:40:\"http://localhost/index.php/home/index\";',
             ];
         }
 
-        if ($this->db->DBDriver === 'Postgre') {
-            $data['ci_sessions'][] = [
-                'id'         => '1f5o06b43phsnnf8if6bo33b635e4p2o',
-                'ip_address' => '127.0.0.1',
-                'timestamp'  => '2021-06-25 21:54:14.991403+02',
-                'data'       => '\x' . bin2hex('__ci_last_regenerate|i:1624650854;_ci_previous_url|s:40:\"http://localhost/index.php/home/index\";'),
-            ];
+        if ($this->db->DBDriver === 'OCI8') {
+            $this->db->query('alter session set NLS_DATE_FORMAT=?', ['YYYY-MM-DD HH24:MI:SS']);
+
+            $data['type_test'][0]['type_date']      = '2020-01-11 22:11:00';
+            $data['type_test'][0]['type_time']      = '2020-07-18 15:22:00';
+            $data['type_test'][0]['type_datetime']  = '2020-06-18 05:12:24';
+            $data['type_test'][0]['type_timestamp'] = '2020-06-18 21:53:21';
+
+            unset($data['type_test'][0]['type_blob']);
         }
 
-        foreach ($data as $table => $dummy_data) {
+        foreach ($data as $table => $seeds) {
             $this->db->table($table)->truncate();
 
-            foreach ($dummy_data as $single_dummy_data) {
-                $this->db->table($table)->insert($single_dummy_data);
+            foreach ($seeds as $seed) {
+                $this->db->table($table)->insert($seed);
             }
         }
     }
